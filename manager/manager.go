@@ -9,9 +9,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/r3labs/sse/v2"
 	"github.com/teacat/chaturbate-dvr/channel"
+	"github.com/teacat/chaturbate-dvr/server"
 	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/router/view"
 )
@@ -34,6 +36,57 @@ func New() (*Manager, error) {
 	return &Manager{
 		SSE: server,
 	}, nil
+}
+
+// settingsFile is the path to the persisted global settings file.
+const settingsFile = "./conf/settings.json"
+
+// settings holds the subset of global config that can be updated via the web UI.
+type settings struct {
+	Cookies   string `json:"cookies"`
+	UserAgent string `json:"user_agent"`
+}
+
+// SaveSettings persists the current cookies and user-agent to disk.
+func SaveSettings() error {
+	s := settings{
+		Cookies:   server.Config.Cookies,
+		UserAgent: server.Config.UserAgent,
+	}
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal settings: %w", err)
+	}
+	if err := os.MkdirAll("./conf", 0777); err != nil {
+		return fmt.Errorf("mkdir conf: %w", err)
+	}
+	if err := os.WriteFile(settingsFile, b, 0777); err != nil {
+		return fmt.Errorf("write settings: %w", err)
+	}
+	return nil
+}
+
+// LoadSettings reads persisted cookies and user-agent from disk and applies
+// them to server.Config, overriding any CLI-provided values.
+func LoadSettings() error {
+	b, err := os.ReadFile(settingsFile)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read settings: %w", err)
+	}
+	var s settings
+	if err := json.Unmarshal(b, &s); err != nil {
+		return fmt.Errorf("unmarshal settings: %w", err)
+	}
+	if s.Cookies != "" {
+		server.Config.Cookies = s.Cookies
+	}
+	if s.UserAgent != "" {
+		server.Config.UserAgent = s.UserAgent
+	}
+	return nil
 }
 
 // SaveConfig saves the current channels and state to a JSON file.
@@ -197,4 +250,19 @@ func (m *Manager) Publish(evt entity.Event, info *entity.ChannelInfo) {
 // Subscriber handles SSE subscriptions for the specified channel.
 func (m *Manager) Subscriber(w http.ResponseWriter, r *http.Request) {
 	m.SSE.ServeHTTP(w, r)
+}
+
+// Shutdown gracefully stops all active channels, saves config, and waits for
+// in-progress file cleanup and seek-index goroutines to finish.
+// Call this before process exit to ensure recorded files are properly closed
+// and indexed for seeking.
+func (m *Manager) Shutdown() {
+	m.Channels.Range(func(key, value any) bool {
+		value.(*channel.Channel).Stop()
+		return true
+	})
+	// Persist channel list so the web UI restores them on next start.
+	_ = m.SaveConfig()
+	// Give cleanup and BuildSeekIndex goroutines time to complete.
+	time.Sleep(5 * time.Second)
 }

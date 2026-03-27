@@ -18,4 +18,5 @@ type IManager interface {
 	Subscriber(w http.ResponseWriter, r *http.Request)
 	LoadConfig() error
 	SaveConfig() error
+	Shutdown()
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/teacat/chaturbate-dvr/entity"
+	"github.com/teacat/chaturbate-dvr/manager"
 	"github.com/teacat/chaturbate-dvr/server"
 )
 
@@ -100,5 +101,10 @@ func UpdateConfig(c *gin.Context) {
 
 	server.Config.Cookies = req.Cookies
 	server.Config.UserAgent = req.UserAgent
+
+	if err := manager.SaveSettings(); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("save settings: %w", err))
+		return
+	}
 	c.Redirect(http.StatusFound, "/")
 }

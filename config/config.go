@@ -22,5 +22,6 @@ func New(c *cli.Context) (*entity.Config, error) {
 		Cookies:       c.String("cookies"),
 		UserAgent:     c.String("user-agent"),
 		Domain:        c.String("domain"),
+		Debug:         c.Bool("debug"),
 	}, nil
 }

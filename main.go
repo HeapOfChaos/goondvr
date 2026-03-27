@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/teacat/chaturbate-dvr/config"
 	"github.com/teacat/chaturbate-dvr/entity"
@@ -100,6 +102,11 @@ func main() {
 				Usage: "Chaturbate domain to use",
 				Value: "https://chaturbate.com/",
 			},
+			&cli.BoolFlag{
+				Name:  "debug",
+				Usage: "Write full HTML response to a temp file when stream detection fails",
+				Value: false,
+			},
 		},
 		Action: start,
 	}
@@ -116,10 +123,24 @@ func start(c *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("new config: %w", err)
 	}
+	if err := manager.LoadSettings(); err != nil {
+		return fmt.Errorf("load settings: %w", err)
+	}
 	server.Manager, err = manager.New()
 	if err != nil {
 		return fmt.Errorf("new manager: %w", err)
 	}
+
+	// Handle SIGINT / SIGTERM so in-progress recordings are cleanly closed and
+	// seek-indexed before the process exits.
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		fmt.Println("Shutting down, waiting for recordings to close...")
+		server.Manager.Shutdown()
+		os.Exit(0)
+	}()
 
 	// init web interface if username is not provided
 	if server.Config.Username == "" {
