@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -81,6 +82,19 @@ func (h *Req) GetBytes(ctx context.Context, url string) ([]byte, error) {
 
 	// Check for Cloudflare protection
 	if strings.Contains(string(b), "<title>Just a moment...</title>") {
+		if server.Config.Debug {
+			fmt.Printf("[DEBUG] CF response for %s (status %d)\n", req.URL, resp.StatusCode)
+			tmpFile, ferr := os.CreateTemp("", "chaturbate-debug-cf-*.html")
+			if ferr == nil {
+				if _, werr := tmpFile.Write(b); werr == nil {
+					fmt.Printf("[DEBUG]   Full body written to: %s\n", tmpFile.Name())
+				}
+				tmpFile.Close()
+			}
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return nil, ErrCloudflareRateLimit
+		}
 		return nil, ErrCloudflareBlocked
 	}
 	// Check for Age Verification
