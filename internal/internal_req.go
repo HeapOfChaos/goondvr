@@ -92,9 +92,6 @@ func (h *Req) GetBytes(ctx context.Context, url string) ([]byte, error) {
 				tmpFile.Close()
 			}
 		}
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return nil, ErrCloudflareRateLimit
-		}
 		return nil, ErrCloudflareBlocked
 	}
 	// Check for Age Verification
