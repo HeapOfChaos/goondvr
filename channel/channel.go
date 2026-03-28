@@ -30,6 +30,7 @@ type Channel struct {
 	NumViewers       int
 	EdgeRegion       string
 	SummaryCardImage string
+	CFBlockCount     int
 
 	logsMu sync.RWMutex
 	Logs   []string

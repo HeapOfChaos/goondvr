@@ -13,15 +13,20 @@ import (
 
 	"github.com/r3labs/sse/v2"
 	"github.com/teacat/chaturbate-dvr/channel"
-	"github.com/teacat/chaturbate-dvr/server"
 	"github.com/teacat/chaturbate-dvr/entity"
+	"github.com/teacat/chaturbate-dvr/notifier"
 	"github.com/teacat/chaturbate-dvr/router/view"
+	"github.com/teacat/chaturbate-dvr/server"
 )
 
 // Manager is responsible for managing channels and their states.
 type Manager struct {
 	Channels sync.Map
 	SSE      *sse.Server
+
+	startTime  time.Time
+	cfBlocksMu sync.Mutex
+	cfBlocks   map[string]time.Time // username -> last CF block time
 }
 
 // New initializes a new Manager instance with an SSE server.
@@ -34,6 +39,9 @@ func New() (*Manager, error) {
 	updateStream.AutoReplay = false
 
 	m := &Manager{SSE: server}
+	m.startTime = time.Now()
+	m.cfBlocks = make(map[string]time.Time)
+	go m.diskMonitor()
 
 	// Send a heartbeat event every 30s so browsers can detect a stale connection
 	// and the SSE extension will reconnect automatically.
@@ -56,15 +64,35 @@ const settingsFile = "./conf/settings.json"
 
 // settings holds the subset of global config that can be updated via the web UI.
 type settings struct {
-	Cookies   string `json:"cookies"`
-	UserAgent string `json:"user_agent"`
+	Cookies             string `json:"cookies"`
+	UserAgent           string `json:"user_agent"`
+	NtfyURL             string `json:"ntfy_url,omitempty"`
+	NtfyTopic           string `json:"ntfy_topic,omitempty"`
+	NtfyToken           string `json:"ntfy_token,omitempty"`
+	DiscordWebhookURL   string `json:"discord_webhook_url,omitempty"`
+	DiskWarningPercent  int    `json:"disk_warning_percent,omitempty"`
+	DiskCriticalPercent int    `json:"disk_critical_percent,omitempty"`
+	CFChannelThreshold  int    `json:"cf_channel_threshold,omitempty"`
+	CFGlobalThreshold   int    `json:"cf_global_threshold,omitempty"`
+	NotifyCooldownHours int    `json:"notify_cooldown_hours,omitempty"`
+	NotifyStreamOnline  bool   `json:"notify_stream_online,omitempty"`
 }
 
 // SaveSettings persists the current cookies and user-agent to disk.
 func SaveSettings() error {
 	s := settings{
-		Cookies:   server.Config.Cookies,
-		UserAgent: server.Config.UserAgent,
+		Cookies:             server.Config.Cookies,
+		UserAgent:           server.Config.UserAgent,
+		NtfyURL:             server.Config.NtfyURL,
+		NtfyTopic:           server.Config.NtfyTopic,
+		NtfyToken:           server.Config.NtfyToken,
+		DiscordWebhookURL:   server.Config.DiscordWebhookURL,
+		DiskWarningPercent:  server.Config.DiskWarningPercent,
+		DiskCriticalPercent: server.Config.DiskCriticalPercent,
+		CFChannelThreshold:  server.Config.CFChannelThreshold,
+		CFGlobalThreshold:   server.Config.CFGlobalThreshold,
+		NotifyCooldownHours: server.Config.NotifyCooldownHours,
+		NotifyStreamOnline:  server.Config.NotifyStreamOnline,
 	}
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -98,6 +126,32 @@ func LoadSettings() error {
 	}
 	if s.UserAgent != "" {
 		server.Config.UserAgent = s.UserAgent
+	}
+	server.Config.NtfyURL = s.NtfyURL
+	server.Config.NtfyTopic = s.NtfyTopic
+	server.Config.NtfyToken = s.NtfyToken
+	server.Config.DiscordWebhookURL = s.DiscordWebhookURL
+	server.Config.NotifyStreamOnline = s.NotifyStreamOnline
+
+	server.Config.DiskWarningPercent = s.DiskWarningPercent
+	if server.Config.DiskWarningPercent <= 0 {
+		server.Config.DiskWarningPercent = 80
+	}
+	server.Config.DiskCriticalPercent = s.DiskCriticalPercent
+	if server.Config.DiskCriticalPercent <= 0 {
+		server.Config.DiskCriticalPercent = 90
+	}
+	server.Config.CFChannelThreshold = s.CFChannelThreshold
+	if server.Config.CFChannelThreshold <= 0 {
+		server.Config.CFChannelThreshold = 5
+	}
+	server.Config.CFGlobalThreshold = s.CFGlobalThreshold
+	if server.Config.CFGlobalThreshold <= 0 {
+		server.Config.CFGlobalThreshold = 3
+	}
+	server.Config.NotifyCooldownHours = s.NotifyCooldownHours
+	if server.Config.NotifyCooldownHours <= 0 {
+		server.Config.NotifyCooldownHours = 4
 	}
 	return nil
 }
@@ -293,4 +347,100 @@ func (m *Manager) Shutdown() {
 	_ = m.SaveConfig()
 	// Give cleanup and BuildSeekIndex goroutines time to complete.
 	time.Sleep(5 * time.Second)
+}
+
+// ReportCFBlock records a CF block for username and fires a global alert if
+// enough channels have been blocked within the current poll window.
+func (m *Manager) ReportCFBlock(username string) {
+	m.cfBlocksMu.Lock()
+	defer m.cfBlocksMu.Unlock()
+	m.cfBlocks[username] = time.Now()
+
+	window := time.Duration(server.Config.Interval)*time.Minute*2 + 30*time.Second
+	count := 0
+	for _, t := range m.cfBlocks {
+		if time.Since(t) < window {
+			count++
+		}
+	}
+	threshold := server.Config.CFGlobalThreshold
+	if threshold <= 0 {
+		threshold = 3
+	}
+	if count >= threshold {
+		notifier.Notify(
+			notifier.KeyCFGlobal,
+			"⚠️ Cloudflare Rate Limit",
+			fmt.Sprintf("%d channels are being blocked by Cloudflare simultaneously", count),
+		)
+	}
+}
+
+// ResetCFBlock clears the CF block record for a channel that has recovered.
+func (m *Manager) ResetCFBlock(username string) {
+	m.cfBlocksMu.Lock()
+	defer m.cfBlocksMu.Unlock()
+	delete(m.cfBlocks, username)
+}
+
+// GetStats returns current system stats for the /api/stats endpoint.
+func (m *Manager) GetStats() server.StatsResponse {
+	recPath := recordingDir(server.Config.Pattern)
+	disk, _ := getDiskStats(recPath)
+
+	count := 0
+	m.Channels.Range(func(_, v any) bool {
+		if v.(*channel.Channel).IsOnline {
+			count++
+		}
+		return true
+	})
+
+	return server.StatsResponse{
+		DiskPath:       disk.Path,
+		DiskUsedBytes:  disk.Used,
+		DiskTotalBytes: disk.Total,
+		DiskPercent:    disk.Percent,
+		UptimeSeconds:  int64(time.Since(m.startTime).Seconds()),
+		RecordingCount: count,
+	}
+}
+
+// diskMonitor runs every 5 minutes and fires notifications when disk usage
+// crosses the configured warning or critical thresholds.
+func (m *Manager) diskMonitor() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		recPath := recordingDir(server.Config.Pattern)
+		disk, err := getDiskStats(recPath)
+		if err != nil {
+			continue
+		}
+		pct := disk.Percent
+		critThresh := float64(server.Config.DiskCriticalPercent)
+		warnThresh := float64(server.Config.DiskWarningPercent)
+		if critThresh <= 0 {
+			critThresh = 90
+		}
+		if warnThresh <= 0 {
+			warnThresh = 80
+		}
+		usedGB := float64(disk.Used) / 1e9
+		totalGB := float64(disk.Total) / 1e9
+		msg := fmt.Sprintf("%.1f GB used of %.1f GB (%.0f%%)", usedGB, totalGB, pct)
+		if pct >= critThresh {
+			notifier.Notify(
+				fmt.Sprintf(notifier.KeyDiskCritical, recPath),
+				"🚨 Disk Space Critical",
+				msg,
+			)
+		} else if pct >= warnThresh {
+			notifier.Notify(
+				fmt.Sprintf(notifier.KeyDiskWarning, recPath),
+				"⚠️ Disk Space Warning",
+				msg,
+			)
+		}
+	}
 }

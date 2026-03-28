@@ -20,4 +20,17 @@ type IManager interface {
 	SaveConfig() error
 	Shutdown()
 	GetChannelThumb(username string) string
+	ReportCFBlock(username string)
+	ResetCFBlock(username string)
+	GetStats() StatsResponse
+}
+
+// StatsResponse holds system stats returned by the /api/stats endpoint.
+type StatsResponse struct {
+	DiskPath       string  `json:"disk_path"`
+	DiskUsedBytes  uint64  `json:"disk_used_bytes"`
+	DiskTotalBytes uint64  `json:"disk_total_bytes"`
+	DiskPercent    float64 `json:"disk_percent"`
+	UptimeSeconds  int64   `json:"uptime_seconds"`
+	RecordingCount int     `json:"recording_count"`
 }

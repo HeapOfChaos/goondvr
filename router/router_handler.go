@@ -113,10 +113,25 @@ func Updates(c *gin.Context) {
 	server.Manager.Subscriber(c.Writer, c.Request)
 }
 
+// Stats returns system stats as JSON for the header stats bar.
+func Stats(c *gin.Context) {
+	c.JSON(http.StatusOK, server.Manager.GetStats())
+}
+
 // UpdateConfigRequest represents the request body for updating configuration.
 type UpdateConfigRequest struct {
-	Cookies   string `form:"cookies"`
-	UserAgent string `form:"user_agent"`
+	Cookies             string `form:"cookies"`
+	UserAgent           string `form:"user_agent"`
+	NtfyURL             string `form:"ntfy_url"`
+	NtfyTopic           string `form:"ntfy_topic"`
+	NtfyToken           string `form:"ntfy_token"`
+	DiscordWebhookURL   string `form:"discord_webhook_url"`
+	DiskWarningPercent  int    `form:"disk_warning_percent"`
+	DiskCriticalPercent int    `form:"disk_critical_percent"`
+	CFChannelThreshold  int    `form:"cf_channel_threshold"`
+	CFGlobalThreshold   int    `form:"cf_global_threshold"`
+	NotifyCooldownHours int    `form:"notify_cooldown_hours"`
+	NotifyStreamOnline  bool   `form:"notify_stream_online"`
 }
 
 // UpdateConfig updates the server configuration.
@@ -129,6 +144,16 @@ func UpdateConfig(c *gin.Context) {
 
 	server.Config.Cookies = req.Cookies
 	server.Config.UserAgent = req.UserAgent
+	server.Config.NtfyURL = req.NtfyURL
+	server.Config.NtfyTopic = req.NtfyTopic
+	server.Config.NtfyToken = req.NtfyToken
+	server.Config.DiscordWebhookURL = req.DiscordWebhookURL
+	server.Config.DiskWarningPercent = req.DiskWarningPercent
+	server.Config.DiskCriticalPercent = req.DiskCriticalPercent
+	server.Config.CFChannelThreshold = req.CFChannelThreshold
+	server.Config.CFGlobalThreshold = req.CFGlobalThreshold
+	server.Config.NotifyCooldownHours = req.NotifyCooldownHours
+	server.Config.NotifyStreamOnline = req.NotifyStreamOnline
 
 	if err := manager.SaveSettings(); err != nil {
 		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("save settings: %w", err))

@@ -75,4 +75,16 @@ type Config struct {
 	UserAgent     string
 	Domain        string
 	Debug         bool
+
+	// Notification settings — persisted in settings.json, configured via web UI.
+	NtfyURL             string
+	NtfyTopic           string
+	NtfyToken           string
+	DiscordWebhookURL   string
+	DiskWarningPercent  int // notify when disk usage exceeds this %; default 80
+	DiskCriticalPercent int // notify when disk usage exceeds this %; default 90
+	CFChannelThreshold  int // consecutive CF blocks before per-channel alert; default 5
+	CFGlobalThreshold   int // channels hitting CF in same window for global alert; default 3
+	NotifyCooldownHours int // hours between repeated alerts of the same type; default 4
+	NotifyStreamOnline  bool
 }

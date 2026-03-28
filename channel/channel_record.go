@@ -10,6 +10,7 @@ import (
 	"github.com/avast/retry-go/v4"
 	"github.com/teacat/chaturbate-dvr/chaturbate"
 	"github.com/teacat/chaturbate-dvr/internal"
+	"github.com/teacat/chaturbate-dvr/notifier"
 	"github.com/teacat/chaturbate-dvr/server"
 )
 
@@ -56,6 +57,13 @@ func (ch *Channel) Monitor() {
 		onRetry := func(_ uint, err error) {
 			ch.UpdateOnlineStatus(false)
 
+			// Reset CF block count whenever a non-CF response is received.
+			if !errors.Is(err, internal.ErrCloudflareBlocked) && ch.CFBlockCount > 0 {
+				ch.CFBlockCount = 0
+				server.Manager.ResetCFBlock(ch.Config.Username)
+				notifier.Default.ResetCooldown(fmt.Sprintf(notifier.KeyCFChannel, ch.Config.Username))
+			}
+
 			if errors.Is(err, internal.ErrChannelOffline) {
 				ch.Info("channel is offline, try again in %d min(s)", server.Config.Interval)
 			} else if errors.Is(err, internal.ErrPrivateStream) {
@@ -63,6 +71,19 @@ func (ch *Channel) Monitor() {
 			} else if errors.Is(err, internal.ErrHiddenStream) {
 				ch.Info("channel is hidden, try again in %d min(s)", server.Config.Interval)
 			} else if errors.Is(err, internal.ErrCloudflareBlocked) {
+				ch.CFBlockCount++
+				cfThresh := server.Config.CFChannelThreshold
+				if cfThresh <= 0 {
+					cfThresh = 5
+				}
+				if ch.CFBlockCount >= cfThresh {
+					notifier.Notify(
+						fmt.Sprintf(notifier.KeyCFChannel, ch.Config.Username),
+						"⚠️ Cloudflare Block",
+						fmt.Sprintf("`%s` has been blocked by Cloudflare %d times consecutively", ch.Config.Username, ch.CFBlockCount),
+					)
+				}
+				server.Manager.ReportCFBlock(ch.Config.Username)
 				ch.Info("channel was blocked by Cloudflare; try with `-cookies` and `-user-agent`? try again in %d min(s)", server.Config.Interval)
 			} else if errors.Is(err, internal.ErrAgeVerification) {
 				ch.Info("age verification required; pass cookies with `-cookies` to authenticate, try again in %d min(s)", server.Config.Interval)
@@ -169,6 +190,20 @@ func (ch *Channel) RecordStream(ctx context.Context, client *chaturbate.Client) 
 	}()
 
 	ch.UpdateOnlineStatus(true) // Update online status after `GetPlaylist` is OK
+
+	// Reset CF state on successful stream start.
+	ch.CFBlockCount = 0
+	notifier.Default.ResetCooldown(fmt.Sprintf(notifier.KeyCFChannel, ch.Config.Username))
+	server.Manager.ResetCFBlock(ch.Config.Username)
+	// Notify stream online if enabled.
+	if server.Config.NotifyStreamOnline {
+		title := fmt.Sprintf("📡 %s is live!", ch.Config.Username)
+		body := ch.RoomTitle
+		if body == "" {
+			body = ch.Config.Username
+		}
+		notifier.Notify(fmt.Sprintf(notifier.KeyStreamOnline, ch.Config.Username), title, body)
+	}
 
 	streamType := "HLS"
 	if playlist.FileExt == ".mp4" {

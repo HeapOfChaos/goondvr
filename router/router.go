@@ -59,7 +59,7 @@ func SetupViews(r *gin.Engine) {
 	r.POST("/stop_channel/:username", StopChannel)
 	r.POST("/pause_channel/:username", PauseChannel)
 	r.POST("/resume_channel/:username", ResumeChannel)
-
+	r.GET("/api/stats", Stats)
 }
 
 // LoadHTMLFromEmbedFS loads specific HTML templates from an embedded filesystem and registers them with Gin.

@@ -121,6 +121,19 @@
             </div>
             <!-- / Header -->
 
+            <!-- Stats Bar -->
+            <div id="stats-bar" class="ts-meta has-top-spaced" style="display:none; flex-wrap:wrap; gap: 0 1.2rem;">
+                <div class="item">
+                    <span class="ts-icon is-hard-drive-icon is-end-spaced"></span>
+                    <span id="stat-disk" class="ts-text is-description is-bold"></span>
+                </div>
+                <div class="item">
+                    <span class="ts-icon is-clock-icon is-end-spaced"></span>
+                    <span id="stat-uptime" class="ts-text is-description is-bold"></span>
+                </div>
+            </div>
+            <!-- / Stats Bar -->
+
             {{ if not .Channels }}
             <!-- Blankslate -->
             <div class="ts-divider has-vertically-spaced-large"></div>
@@ -210,6 +223,109 @@
                             </div>
                         </div>
                         <!-- / User Agent -->
+
+                        <div class="ts-divider has-vertically-spaced-large"></div>
+
+                        <!-- Notifications header -->
+                        <div class="ts-header is-small has-bottom-spaced">Notifications</div>
+
+                        <!-- ntfy -->
+                        <div class="ts-control is-wide">
+                            <div class="label">ntfy Server URL</div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="url" name="ntfy_url" value="{{ .Config.NtfyURL }}" placeholder="https://ntfy.sh" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ts-control is-wide has-top-spaced">
+                            <div class="label">ntfy Topic</div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="text" name="ntfy_topic" value="{{ .Config.NtfyTopic }}" placeholder="my-dvr-alerts" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ts-control is-wide has-top-spaced">
+                            <div class="label">ntfy Token <span class="ts-text is-description">(optional)</span></div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="password" name="ntfy_token" value="{{ .Config.NtfyToken }}" placeholder="Bearer token" />
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / ntfy -->
+
+                        <!-- Discord -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Discord Webhook URL <span class="ts-text is-description">(optional)</span></div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="url" name="discord_webhook_url" value="{{ .Config.DiscordWebhookURL }}" placeholder="https://discord.com/api/webhooks/..." />
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / Discord -->
+
+                        <!-- Thresholds -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Thresholds &amp; Cooldowns</div>
+                            <div class="content">
+                                <div class="ts-content is-padded is-secondary">
+                                    <div class="ts-grid is-relaxed is-2-columns">
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Disk Warning %</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="disk_warning_percent" value="{{ .Config.DiskWarningPercent }}" min="1" max="99" />
+                                                <span class="label">%</span>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Disk Critical %</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="disk_critical_percent" value="{{ .Config.DiskCriticalPercent }}" min="1" max="100" />
+                                                <span class="label">%</span>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">CF Channel Alerts</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="cf_channel_threshold" value="{{ .Config.CFChannelThreshold }}" min="1" />
+                                                <span class="label">blocks</span>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">CF Global Alerts</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="cf_global_threshold" value="{{ .Config.CFGlobalThreshold }}" min="1" />
+                                                <span class="label">channels</span>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Alert Cooldown</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="notify_cooldown_hours" value="{{ .Config.NotifyCooldownHours }}" min="0" />
+                                                <span class="label">hrs</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="ts-text is-description has-top-spaced">Disk checks run every 5 min. CF thresholds trigger alerts after consecutive blocks per channel or simultaneous blocks across channels.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / Thresholds -->
+
+                        <!-- Stream Online Toggle -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Stream Alerts</div>
+                            <div class="content is-padded">
+                                <label class="ts-switch">
+                                    <input type="checkbox" name="notify_stream_online" value="true" {{ if .Config.NotifyStreamOnline }}checked{{ end }} />
+                                    Notify when a channel goes live
+                                </label>
+                            </div>
+                        </div>
+                        <!-- / Stream Online Toggle -->
                     </div>
 
                     <div class="ts-divider"></div>
@@ -218,8 +334,8 @@
                         <div class="ts-grid is-middle-aligned">
                             <div class="column is-fluid">
                                 <div class="ts-text is-description">
-                                    <span class="ts-icon is-triangle-exclamation-icon is-end-spaced"></span>
-                                    Changes will be reverted after the program restarts
+                                    <span class="ts-icon is-floppy-disk-icon is-end-spaced"></span>
+                                    Settings are persisted to disk
                                 </div>
                             </div>
                             <div class="column">
@@ -577,6 +693,39 @@
             document.body.querySelectorAll("textarea").forEach((textarea) => {
                 textarea.scrollTop = textarea.scrollHeight
             })
+
+            // Stats bar: poll /api/stats every 30s
+            function fmtBytes(b) {
+                if (b >= 1e12) return (b / 1e12).toFixed(1) + ' TB';
+                if (b >= 1e9)  return (b / 1e9).toFixed(1) + ' GB';
+                if (b >= 1e6)  return (b / 1e6).toFixed(1) + ' MB';
+                return b + ' B';
+            }
+            function fmtUptime(sec) {
+                const d = Math.floor(sec / 86400);
+                const h = Math.floor((sec % 86400) / 3600);
+                const m = Math.floor((sec % 3600) / 60);
+                if (d > 0) return `UP ${d}d ${h}h`;
+                if (h > 0) return `UP ${h}h ${m}m`;
+                return `UP ${m}m`;
+            }
+            function fetchStats() {
+                fetch('/api/stats').then(r => r.json()).then(data => {
+                    const bar = document.getElementById('stats-bar');
+                    if (!bar) return;
+                    bar.style.display = '';
+                    const diskEl = document.getElementById('stat-disk');
+                    const uptimeEl = document.getElementById('stat-uptime');
+                    if (data.disk_total_bytes > 0) {
+                        diskEl.textContent = `DISK ${fmtBytes(data.disk_used_bytes)} / ${fmtBytes(data.disk_total_bytes)} (${Math.round(data.disk_percent)}%)`;
+                    } else {
+                        diskEl.textContent = '';
+                    }
+                    uptimeEl.textContent = fmtUptime(data.uptime_seconds);
+                }).catch(() => {});
+            }
+            fetchStats();
+            setInterval(fetchStats, 30000);
         </script>
     </body>
 </html>
