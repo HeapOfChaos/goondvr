@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/teacat/chaturbate-dvr/entity"
@@ -25,7 +26,8 @@ type Channel struct {
 	Sequence   int
 	FileExt    string  // ".ts" or ".mp4", set per-stream
 
-	Logs []string
+	logsMu sync.RWMutex
+	Logs   []string
 
 	File   *os.File
 	Config *entity.ChannelConfig
@@ -51,10 +53,12 @@ func (ch *Channel) Publisher() {
 		select {
 		case v := <-ch.LogCh:
 			// Append the log message to ch.Logs and keep only the last 100 rows
+			ch.logsMu.Lock()
 			ch.Logs = append(ch.Logs, v)
 			if len(ch.Logs) > 100 {
 				ch.Logs = ch.Logs[len(ch.Logs)-100:]
 			}
+			ch.logsMu.Unlock()
 			server.Manager.Publish(entity.EventLog, ch.ExportInfo())
 
 		case <-ch.UpdateCh:
@@ -94,6 +98,11 @@ func (ch *Channel) ExportInfo() *entity.ChannelInfo {
 	if ch.StreamedAt != 0 {
 		streamedAt = time.Unix(ch.StreamedAt, 0).Format("2006-01-02 15:04 AM")
 	}
+	ch.logsMu.RLock()
+	logs := make([]string, len(ch.Logs))
+	copy(logs, ch.Logs)
+	ch.logsMu.RUnlock()
+
 	return &entity.ChannelInfo{
 		IsOnline:     ch.IsOnline,
 		IsPaused:     ch.Config.IsPaused,
@@ -105,7 +114,7 @@ func (ch *Channel) ExportInfo() *entity.ChannelInfo {
 		Duration:     internal.FormatDuration(ch.Duration),
 		Filesize:     internal.FormatFilesize(ch.Filesize),
 		Filename:     filename,
-		Logs:         ch.Logs,
+		Logs:         logs,
 		GlobalConfig: server.Config,
 	}
 }

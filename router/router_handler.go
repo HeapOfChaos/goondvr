@@ -44,8 +44,9 @@ func CreateChannel(c *gin.Context) {
 		return
 	}
 
+	var errs []string
 	for _, username := range strings.Split(req.Username, ",") {
-		server.Manager.CreateChannel(&entity.ChannelConfig{
+		if err := server.Manager.CreateChannel(&entity.ChannelConfig{
 			IsPaused:    false,
 			Username:    username,
 			Framerate:   req.Framerate,
@@ -54,7 +55,13 @@ func CreateChannel(c *gin.Context) {
 			MaxDuration: req.MaxDuration,
 			MaxFilesize: req.MaxFilesize,
 			CreatedAt:   time.Now().Unix(),
-		}, true)
+		}, true); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+	if len(errs) > 0 {
+		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("%s", strings.Join(errs, "; ")))
+		return
 	}
 	c.Redirect(http.StatusFound, "/")
 }

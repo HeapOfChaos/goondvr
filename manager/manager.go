@@ -142,13 +142,18 @@ func (m *Manager) LoadConfig() error {
 // CreateChannel starts monitoring an M3U8 stream
 func (m *Manager) CreateChannel(conf *entity.ChannelConfig, shouldSave bool) error {
 	conf.Sanitize()
-	ch := channel.New(conf)
+
+	if conf.Username == "" {
+		return fmt.Errorf("username is empty")
+	}
 
 	// prevent duplicate channels
 	_, ok := m.Channels.Load(conf.Username)
 	if ok {
 		return fmt.Errorf("channel %s already exists", conf.Username)
 	}
+
+	ch := channel.New(conf)
 	m.Channels.Store(conf.Username, ch)
 
 	go ch.Resume(0)
