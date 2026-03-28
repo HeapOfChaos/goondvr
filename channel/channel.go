@@ -41,10 +41,14 @@ type Channel struct {
 // New creates a new channel instance with the given manager and configuration.
 func New(conf *entity.ChannelConfig) *Channel {
 	ch := &Channel{
-		LogCh:      make(chan string),
-		UpdateCh:   make(chan bool),
-		Config:     conf,
-		CancelFunc: func() {},
+		LogCh:            make(chan string),
+		UpdateCh:         make(chan bool),
+		Config:           conf,
+		CancelFunc:       func() {},
+		RoomTitle:        conf.RoomTitle,
+		Gender:           conf.Gender,
+		SummaryCardImage: conf.SummaryCardImage,
+		StreamedAt:       conf.StreamedAt,
 	}
 	go ch.Publisher()
 

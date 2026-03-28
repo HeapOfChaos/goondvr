@@ -22,6 +22,8 @@ func (ch *Channel) Monitor() {
 	if ch.StreamedAt == 0 {
 		if ts, err := chaturbate.FetchLastBroadcast(context.Background(), client.Req, ch.Config.Username); err == nil && ts > 0 {
 			ch.StreamedAt = ts
+			ch.Config.StreamedAt = ts
+			_ = server.Manager.SaveConfig()
 			ch.Update()
 		}
 	}
@@ -115,24 +117,37 @@ func (ch *Channel) RecordStream(ctx context.Context, client *chaturbate.Client) 
 	stream, err := client.GetStream(ctx, ch.Config.Username)
 	// Update static metadata whenever the API responds, even if the channel is offline.
 	// This ensures thumbnails and room info show for channels not currently recording.
+	// Mirror changes back to Config so they survive restarts via SaveConfig.
 	if stream != nil {
-		if stream.RoomTitle != "" {
+		changed := false
+		if stream.RoomTitle != "" && stream.RoomTitle != ch.RoomTitle {
 			ch.RoomTitle = stream.RoomTitle
+			ch.Config.RoomTitle = stream.RoomTitle
+			changed = true
 		}
-		if stream.Gender != "" {
+		if stream.Gender != "" && stream.Gender != ch.Gender {
 			ch.Gender = stream.Gender
+			ch.Config.Gender = stream.Gender
+			changed = true
 		}
 		if stream.EdgeRegion != "" {
 			ch.EdgeRegion = stream.EdgeRegion
 		}
-		if stream.SummaryCardImage != "" {
+		if stream.SummaryCardImage != "" && stream.SummaryCardImage != ch.SummaryCardImage {
 			ch.SummaryCardImage = stream.SummaryCardImage
+			ch.Config.SummaryCardImage = stream.SummaryCardImage
+			changed = true
+		}
+		if changed {
+			_ = server.Manager.SaveConfig()
 		}
 	}
 	if err != nil {
 		return fmt.Errorf("get stream: %w", err)
 	}
 	ch.StreamedAt = time.Now().Unix()
+	ch.Config.StreamedAt = ch.StreamedAt
+	_ = server.Manager.SaveConfig()
 	ch.Sequence = 0
 	ch.NumViewers = stream.NumViewers
 

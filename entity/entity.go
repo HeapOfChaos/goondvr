@@ -23,6 +23,12 @@ type ChannelConfig struct {
 	MaxDuration int    `json:"max_duration"`
 	MaxFilesize int    `json:"max_filesize"`
 	CreatedAt   int64  `json:"created_at"`
+
+	// Persisted metadata — populated at runtime and saved so restarts don't lose them.
+	RoomTitle        string `json:"room_title,omitempty"`
+	Gender           string `json:"gender,omitempty"`
+	SummaryCardImage string `json:"summary_card_image,omitempty"`
+	StreamedAt       int64  `json:"streamed_at,omitempty"`
 }
 
 func (c *ChannelConfig) Sanitize() {
