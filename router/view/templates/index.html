@@ -85,9 +85,6 @@
                     <div class="ts-header is-huge is-uppercased is-heavy has-leading-small">Chaturbate DVR</div>
                     <div class="ts-meta">
                         <div class="item">
-                            <span id="recording-counter" class="ts-text is-description is-bold"></span>
-                        </div>
-                        <div class="item">
                             <span class="ts-text is-description is-bold">VERSION {{ .Config.Version }}</span>
                         </div>
                     </div>
@@ -122,14 +119,22 @@
             <!-- / Header -->
 
             <!-- Stats Bar -->
-            <div id="stats-bar" class="ts-meta has-top-spaced" style="display:none; flex-wrap:wrap; gap: 0 1.2rem;">
-                <div class="item">
-                    <span class="ts-icon is-hard-drive-icon is-end-spaced"></span>
+            <div id="stats-bar" class="ts-meta has-top-spaced" style="display:none; flex-wrap:wrap; gap: 0 1.2rem; align-items: center;">
+                <div class="item" id="stat-disk-item" style="display:none; align-items: center; gap: 0.3rem;">
+                    <span class="ts-icon is-hard-drive-icon"></span>
                     <span id="stat-disk" class="ts-text is-description is-bold"></span>
+                    <span id="stat-disk-bar" style="display:inline-block; width:56px; height:5px; background:rgba(255,255,255,0.12); border-radius:3px; overflow:hidden; vertical-align:middle;">
+                        <span id="stat-disk-fill" style="display:block; height:100%; border-radius:3px; width:0%; background:rgba(255,255,255,0.55); transition:width 0.4s;"></span>
+                    </span>
+                    <span id="stat-disk-pct" class="ts-text is-description is-bold"></span>
                 </div>
                 <div class="item">
                     <span class="ts-icon is-clock-icon is-end-spaced"></span>
                     <span id="stat-uptime" class="ts-text is-description is-bold"></span>
+                </div>
+                <div class="item">
+                    <span id="stat-rec-dot" style="display:inline-block; width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.35); margin-right:0.35rem; vertical-align:middle;"></span>
+                    <span id="stat-recording" class="ts-text is-description is-bold"></span>
                 </div>
             </div>
             <!-- / Stats Bar -->
@@ -247,7 +252,7 @@
                             </div>
                         </div>
                         <div class="ts-control is-wide has-top-spaced">
-                            <div class="label">ntfy Token <span class="ts-text is-description">(optional)</span></div>
+                            <div class="label">ntfy Token</div>
                             <div class="content">
                                 <div class="ts-input">
                                     <input type="password" name="ntfy_token" value="{{ .Config.NtfyToken }}" placeholder="Bearer token" />
@@ -258,7 +263,7 @@
 
                         <!-- Discord -->
                         <div class="ts-control is-wide has-top-spaced-large">
-                            <div class="label">Discord Webhook URL <span class="ts-text is-description">(optional)</span></div>
+                            <div class="label">Discord Webhook</div>
                             <div class="content">
                                 <div class="ts-input">
                                     <input type="url" name="discord_webhook_url" value="{{ .Config.DiscordWebhookURL }}" placeholder="https://discord.com/api/webhooks/..." />
@@ -638,21 +643,6 @@
                 });
             }
 
-            // updateRecordingCount counts recording channels
-            function updateRecordingCount() {
-                let count = 0;
-                document.querySelectorAll('.ts-badge').forEach(badge => {
-                    if (badge.textContent.trim() === 'RECORDING') {
-                        count++;
-                    }
-                });
-                const counter_el = document.getElementById('recording-counter');
-                if (count > 0) {
-                    counter_el.textContent = `${count} ${count === 1 ? 'CHANNEL IS' : 'CHANNELS ARE'} RECORDING`;
-                } else {
-                    counter_el.textContent = `NO RECORDING`;
-                }
-            }
 
             // before content was swapped by HTMX
             document.body.addEventListener("htmx:sseBeforeMessage", function (e) {
@@ -675,7 +665,7 @@
             document.body.addEventListener("htmx:sseMessage", function (e) {
                 let sswe_id = e.detail.elt.getAttribute('sse-swap')
                 if (sswe_id && sswe_id.endsWith("-info") ) {
-                    updateRecordingCount();
+                    fetchStats();
                     initThumbSwitchers();
                     initMarquees();
                 }
@@ -685,7 +675,6 @@
             document.addEventListener("DOMContentLoaded", function() {
                 const savedView = localStorage.getItem('dvr-view') || 'expanded';
                 setView(savedView);
-                updateRecordingCount();
                 initThumbSwitchers();
                 initMarquees();
             });
@@ -705,23 +694,42 @@
                 const d = Math.floor(sec / 86400);
                 const h = Math.floor((sec % 86400) / 3600);
                 const m = Math.floor((sec % 3600) / 60);
-                if (d > 0) return `UP ${d}d ${h}h`;
-                if (h > 0) return `UP ${h}h ${m}m`;
-                return `UP ${m}m`;
+                if (d > 0) return `${d}d ${h}h`;
+                if (h > 0) return `${h}h ${m}m`;
+                return `${m}m`;
             }
             function fetchStats() {
                 fetch('/api/stats').then(r => r.json()).then(data => {
                     const bar = document.getElementById('stats-bar');
                     if (!bar) return;
                     bar.style.display = '';
-                    const diskEl = document.getElementById('stat-disk');
-                    const uptimeEl = document.getElementById('stat-uptime');
+
+                    // Disk
+                    const diskItem = document.getElementById('stat-disk-item');
                     if (data.disk_total_bytes > 0) {
-                        diskEl.textContent = `DISK ${fmtBytes(data.disk_used_bytes)} / ${fmtBytes(data.disk_total_bytes)} (${Math.round(data.disk_percent)}%)`;
+                        document.getElementById('stat-disk').textContent = `${fmtBytes(data.disk_used_bytes)} / ${fmtBytes(data.disk_total_bytes)}`;
+                        document.getElementById('stat-disk-pct').textContent = `${Math.round(data.disk_percent)}%`;
+                        const fill = document.getElementById('stat-disk-fill');
+                        const pct = Math.min(100, Math.round(data.disk_percent));
+                        fill.style.width = pct + '%';
+                        // Color the bar based on severity
+                        fill.style.background = pct >= 90 ? '#e53935' : pct >= 80 ? '#fb8c00' : 'rgba(255,255,255,0.55)';
+                        diskItem.style.display = '';
                     } else {
-                        diskEl.textContent = '';
+                        diskItem.style.display = 'none';
                     }
-                    uptimeEl.textContent = fmtUptime(data.uptime_seconds);
+
+                    // Uptime
+                    document.getElementById('stat-uptime').textContent = fmtUptime(data.uptime_seconds);
+
+                    // Recording count (also update the dot color)
+                    const count = data.recording_count || 0;
+                    const recEl = document.getElementById('stat-recording');
+                    const dot = document.getElementById('stat-rec-dot');
+                    recEl.textContent = count > 0
+                        ? `${count} RECORDING`
+                        : 'NO RECORDING';
+                    dot.style.background = count > 0 ? '#4caf50' : 'rgba(255,255,255,0.35)';
                 }).catch(() => {});
             }
             fetchStats();
