@@ -501,6 +501,7 @@
                 return `https://thumb.live.mmcdn.com/riw/${username}.jpg`;
             };
             const CARD_THUMB_URL = username => `/thumb/${username}`;
+            const LIVE_THUMB_CACHE_BUCKET_MS = 60 * 1000;
 
             // Stores the last successfully loaded live URL per username.
             // SSE re-inits reuse this so they don't fire a new network request.
@@ -540,7 +541,8 @@
                     if (!refresh && liveThumbCache[username]) {
                         src = liveThumbCache[username];
                     } else {
-                        src = LIVE_THUMB_URL(username, site) + '?' + Date.now();
+                        const cacheBucket = Math.floor(Date.now() / LIVE_THUMB_CACHE_BUCKET_MS);
+                        src = LIVE_THUMB_URL(username, site) + '?' + cacheBucket;
                         liveThumbCache[username] = src;
                     }
                 } else {
@@ -632,6 +634,7 @@
 
             // 60s interval: force a fresh live thumbnail fetch
             setInterval(function() {
+                if (document.hidden) return;
                 document.querySelectorAll('.img-switcher').forEach(switcher => {
                     const username = switcher.dataset.username;
                     const isOnline = switcher.dataset.online === 'true';
