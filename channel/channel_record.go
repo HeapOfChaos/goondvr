@@ -166,6 +166,7 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 	// Update static metadata whenever the site API returns it, even if the room
 	// is currently offline/private/hidden.
 	changed := false
+	thumbChanged := false
 	if streamInfo != nil {
 		if streamInfo.RoomTitle != "" && streamInfo.RoomTitle != ch.RoomTitle {
 			ch.RoomTitle = streamInfo.RoomTitle
@@ -181,9 +182,13 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 			ch.SummaryCardImage = streamInfo.SummaryCardImage
 			ch.Config.SummaryCardImage = streamInfo.SummaryCardImage
 			changed = true
+			thumbChanged = true
 		}
 		if changed {
 			_ = server.Manager.SaveConfig()
+			if thumbChanged {
+				ch.UpdateThumb()
+			}
 			ch.Update()
 		}
 	}
@@ -201,7 +206,10 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 	_ = server.Manager.SaveConfig()
 	ch.Sequence = 0
 	ch.NumViewers = streamInfo.NumViewers
-	ch.LiveThumbURL = streamInfo.LiveThumbURL
+	if ch.LiveThumbURL != streamInfo.LiveThumbURL {
+		ch.LiveThumbURL = streamInfo.LiveThumbURL
+		ch.UpdateThumb()
+	}
 
 	playlist, err := chaturbate.FetchPlaylist(ctx, streamInfo.HLSURL, ch.Config.Resolution, ch.Config.Framerate, streamInfo.CDNReferer, streamInfo.MouflonPDKey)
 	if err != nil {

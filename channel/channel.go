@@ -18,6 +18,7 @@ type Channel struct {
 	CancelFunc context.CancelFunc
 	LogCh      chan string
 	UpdateCh   chan bool
+	ThumbCh    chan bool
 	done       chan struct{}
 
 	IsOnline            bool
@@ -59,6 +60,7 @@ func New(conf *entity.ChannelConfig) *Channel {
 	ch := &Channel{
 		LogCh:            make(chan string),
 		UpdateCh:         make(chan bool),
+		ThumbCh:          make(chan bool),
 		done:             make(chan struct{}),
 		Config:           conf,
 		CancelFunc:       func() {},
@@ -91,6 +93,8 @@ func (ch *Channel) Publisher() {
 
 		case <-ch.UpdateCh:
 			server.Manager.Publish(entity.EventUpdate, ch.ExportInfo())
+		case <-ch.ThumbCh:
+			server.Manager.Publish(entity.EventThumb, ch.ExportInfo())
 		}
 	}
 }
@@ -236,7 +240,17 @@ func (ch *Channel) UpdateOnlineStatus(isOnline bool) {
 	if !isOnline {
 		ch.NumViewers = 0
 	}
+	ch.UpdateThumb()
 	ch.Update()
+}
+
+// UpdateThumb sends a thumbnail-only update signal to the publisher.
+func (ch *Channel) UpdateThumb() {
+	select {
+	case <-ch.done:
+		return
+	case ch.ThumbCh <- true:
+	}
 }
 
 // requestMonitorStart starts a monitor immediately when possible, or records

@@ -518,12 +518,26 @@ func (m *Manager) Publish(evt entity.Event, info *entity.ChannelInfo) {
 	switch evt {
 	case entity.EventUpdate:
 		var b bytes.Buffer
-		if err := view.InfoTpl.ExecuteTemplate(&b, "channel_info", info); err != nil {
-			fmt.Println("Error executing template:", err)
-			return
+		for _, mode := range []string{"expanded", "grid", "collapsed"} {
+			if err := view.InfoTpl.ExecuteTemplate(&b, "channel_details", withViewMode(info, mode)); err != nil {
+				fmt.Println("Error executing template:", err)
+				return
+			}
 		}
 		m.SSE.Publish("updates", &sse.Event{
 			Event: []byte(info.ChannelID + "-info"),
+			Data:  b.Bytes(),
+		})
+	case entity.EventThumb:
+		var b bytes.Buffer
+		for _, mode := range []string{"expanded", "grid", "collapsed"} {
+			if err := view.InfoTpl.ExecuteTemplate(&b, "channel_thumb", withViewMode(info, mode)); err != nil {
+				fmt.Println("Error executing template:", err)
+				return
+			}
+		}
+		m.SSE.Publish("updates", &sse.Event{
+			Event: []byte(info.ChannelID + "-thumb"),
 			Data:  b.Bytes(),
 		})
 	case entity.EventLog:
@@ -532,6 +546,12 @@ func (m *Manager) Publish(evt entity.Event, info *entity.ChannelInfo) {
 			Data:  []byte(strings.Join(info.Logs, "\n")),
 		})
 	}
+}
+
+func withViewMode(info *entity.ChannelInfo, mode string) *entity.ChannelInfo {
+	cp := *info
+	cp.ViewMode = mode
+	return &cp
 }
 
 // Subscriber handles SSE subscriptions for the specified channel.

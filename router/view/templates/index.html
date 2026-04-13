@@ -161,8 +161,17 @@
                 {{ range .Channels }}
                 <div class="channel-box ts-box is-horizontal">
                     <!-- Info Section -->
-                    <div sse-swap="{{ .ChannelID }}-info" class="channel-info ts-content is-padded has-break-all" style="width: 400px; line-height: 1.45; padding-right: 0">
-                        {{ template "channel_info" . }}
+                    <div class="channel-info ts-content is-padded has-break-all" style="width: 400px; line-height: 1.45; padding-right: 0">
+                        <div sse-swap="{{ .ChannelID }}-thumb">
+                            {{ template "channel_thumb" (setViewMode . "expanded") }}
+                            {{ template "channel_thumb" (setViewMode . "grid") }}
+                            {{ template "channel_thumb" (setViewMode . "collapsed") }}
+                        </div>
+                        <div sse-swap="{{ .ChannelID }}-info">
+                        {{ template "channel_details" (setViewMode . "expanded") }}
+                        {{ template "channel_details" (setViewMode . "grid") }}
+                        {{ template "channel_details" (setViewMode . "collapsed") }}
+                        </div>
                     </div>
                     <!-- / Info Section -->
 

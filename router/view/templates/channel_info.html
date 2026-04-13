@@ -1,6 +1,5 @@
-{{ define "channel_info" }}
-
-<!-- Expanded View -->
+{{ define "channel_thumb" }}
+{{ if eq .ViewMode "expanded" }}
 <div class="view-expanded">
     {{ if or .IsOnline .SummaryCardImage }}
     <div class="img-switcher" data-channel-id="{{ .ChannelID }}" data-username="{{ .Username }}" data-online="{{ .IsOnline }}" data-site="{{ .Site }}"{{ if .SummaryCardImage }} data-has-card="1"{{ end }}>
@@ -13,7 +12,40 @@
         {{ end }}
     </div>
     {{ end }}
+</div>
+{{ else if eq .ViewMode "grid" }}
+<div class="view-grid">
+    {{ if or .IsOnline .SummaryCardImage }}
+    <div class="img-switcher grid-img-switcher" data-channel-id="{{ .ChannelID }}" data-username="{{ .Username }}" data-online="{{ .IsOnline }}" data-site="{{ .Site }}"{{ if .SummaryCardImage }} data-has-card="1"{{ end }}>
+        <div class="channel-thumb-img"><div class="thumb-layer"></div><div class="thumb-layer"></div></div>
+        {{ if .SummaryCardImage }}
+        <div class="img-switcher-bar">
+            <button class="img-sw-btn" data-mode="card" title="Profile photo"><span class="ts-icon is-image-icon"></span></button>
+            <button class="img-sw-btn" data-mode="live" title="Live preview"><span class="ts-icon is-tower-broadcast-icon"></span></button>
+        </div>
+        {{ end }}
+    </div>
+    {{ else }}
+    <div class="grid-img-switcher" style="background:#111;border-radius:4px 4px 0 0;"></div>
+    {{ end }}
+</div>
+{{ else if eq .ViewMode "collapsed" }}
+<div class="view-collapsed">
+    {{ if or .IsOnline .SummaryCardImage }}
+    <div class="img-switcher collapsed-img-switcher" data-channel-id="{{ .ChannelID }}" data-username="{{ .Username }}" data-online="{{ .IsOnline }}" data-site="{{ .Site }}"{{ if .SummaryCardImage }} data-has-card="1"{{ end }}>
+        <div class="channel-thumb-img"><div class="thumb-layer"></div><div class="thumb-layer"></div></div>
+    </div>
+    {{ else }}
+    <div class="collapsed-img-switcher" style="background:#111;flex-shrink:0;border-radius:3px;"></div>
+    {{ end }}
+</div>
+{{ end }}
+{{ end }}
 
+{{ define "channel_details" }}
+{{ if eq .ViewMode "expanded" }}
+<!-- Expanded View -->
+<div class="view-expanded">
     <!-- Header -->
     <div class="ts-grid is-middle-aligned has-top-spaced-small">
         <div class="column is-fluid">
@@ -40,7 +72,6 @@
 
     <div class="ts-divider has-top-spaced"></div>
 
-    <!-- Info: Channel URL -->
     <div class="ts-grid has-top-spaced">
         <div class="column"><span class="ts-icon is-link-icon"></span></div>
         <div class="column is-fluid">
@@ -49,7 +80,6 @@
         </div>
     </div>
 
-    <!-- Info: Filename -->
     <div class="ts-grid has-top-spaced">
         <div class="column"><span class="ts-icon is-folder-icon"></span></div>
         <div class="column is-fluid">
@@ -58,7 +88,6 @@
         </div>
     </div>
 
-    <!-- Info: Last streamed at -->
     <div class="ts-grid has-top-spaced">
         <div class="column"><span class="ts-icon is-tower-broadcast-icon"></span></div>
         <div class="column is-fluid">
@@ -67,7 +96,6 @@
         </div>
     </div>
 
-    <!-- Info: Segment duration -->
     <div class="ts-grid has-top-spaced">
         <div class="column"><span class="ts-icon is-clock-icon"></span></div>
         <div class="column is-fluid">
@@ -76,7 +104,6 @@
         </div>
     </div>
 
-    <!-- Info: Segment filesize -->
     <div class="ts-grid has-top-spaced">
         <div class="column"><span class="ts-icon is-chart-pie-icon"></span></div>
         <div class="column is-fluid">
@@ -85,7 +112,6 @@
         </div>
     </div>
 
-    <!-- Info: Total disk usage -->
     <div class="ts-grid has-top-spaced">
         <div class="column"><span class="ts-icon is-hard-drive-icon"></span></div>
         <div class="column is-fluid">
@@ -94,7 +120,6 @@
         </div>
     </div>
 
-    <!-- Actions -->
     <div class="ts-grid is-2-columns has-top-spaced-large">
         <div class="column">
             {{ if .IsPaused }}
@@ -120,23 +145,9 @@
         </div>
     </div>
 </div>
-<!-- / Expanded View -->
-
+{{ else if eq .ViewMode "grid" }}
 <!-- Grid View -->
 <div class="view-grid">
-    {{ if or .IsOnline .SummaryCardImage }}
-    <div class="img-switcher grid-img-switcher" data-channel-id="{{ .ChannelID }}" data-username="{{ .Username }}" data-online="{{ .IsOnline }}" data-site="{{ .Site }}"{{ if .SummaryCardImage }} data-has-card="1"{{ end }}>
-        <div class="channel-thumb-img"><div class="thumb-layer"></div><div class="thumb-layer"></div></div>
-        {{ if .SummaryCardImage }}
-        <div class="img-switcher-bar">
-            <button class="img-sw-btn" data-mode="card" title="Profile photo"><span class="ts-icon is-image-icon"></span></button>
-            <button class="img-sw-btn" data-mode="live" title="Live preview"><span class="ts-icon is-tower-broadcast-icon"></span></button>
-        </div>
-        {{ end }}
-    </div>
-    {{ else }}
-    <div class="grid-img-switcher" style="background:#111;border-radius:4px 4px 0 0;"></div>
-    {{ end }}
     <div style="padding:0.65rem 0.75rem 0.75rem">
         <div class="ts-grid is-middle-aligned">
             <div class="column is-fluid">
@@ -177,17 +188,9 @@
         </div>
     </div>
 </div>
-<!-- / Grid View -->
-
+{{ else if eq .ViewMode "collapsed" }}
 <!-- Collapsed View -->
 <div class="view-collapsed">
-    {{ if or .IsOnline .SummaryCardImage }}
-    <div class="img-switcher collapsed-img-switcher" data-channel-id="{{ .ChannelID }}" data-username="{{ .Username }}" data-online="{{ .IsOnline }}" data-site="{{ .Site }}"{{ if .SummaryCardImage }} data-has-card="1"{{ end }}>
-        <div class="channel-thumb-img"><div class="thumb-layer"></div><div class="thumb-layer"></div></div>
-    </div>
-    {{ else }}
-    <div class="collapsed-img-switcher" style="background:#111;flex-shrink:0;border-radius:3px;"></div>
-    {{ end }}
     <div class="collapsed-name">
         <strong>{{ .Username }}</strong>
         {{ if and .IsOnline (not .IsPaused) }}<span class="ts-badge is-small is-start-spaced">REC</span>
@@ -210,6 +213,5 @@
         </form>
     </div>
 </div>
-<!-- / Collapsed View -->
-
+{{ end }}
 {{ end }}

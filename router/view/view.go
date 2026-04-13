@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+
+	"github.com/HeapOfChaos/goondvr/entity"
 )
 
 //go:embed templates
@@ -18,7 +20,16 @@ var InfoTpl *template.Template
 func init() {
 	var err error
 
-	InfoTpl, err = template.New("update").ParseFS(FS, "templates/channel_info.html")
+	InfoTpl, err = template.New("update").Funcs(template.FuncMap{
+		"setViewMode": func(info any, mode string) any {
+			if v, ok := info.(*entity.ChannelInfo); ok {
+				cp := *v
+				cp.ViewMode = mode
+				return &cp
+			}
+			return info
+		},
+	}).ParseFS(FS, "templates/channel_info.html")
 	if err != nil {
 		log.Fatalf("failed to parse template: %v", err)
 	}

@@ -11,6 +11,7 @@ type Event = string
 const (
 	EventUpdate Event = "update"
 	EventLog    Event = "log"
+	EventThumb  Event = "thumb"
 )
 
 // ChannelConfig represents the configuration for a channel.
@@ -67,6 +68,7 @@ func ChannelID(site, username string) string {
 // mostly used for the template rendering.
 type ChannelInfo struct {
 	ChannelID        string
+	ViewMode         string
 	IsOnline         bool
 	IsPaused         bool
 	Username         string

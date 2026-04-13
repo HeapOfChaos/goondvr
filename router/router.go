@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/HeapOfChaos/goondvr/entity"
 	"github.com/HeapOfChaos/goondvr/router/view"
 	"github.com/HeapOfChaos/goondvr/server"
 	"github.com/gin-gonic/gin"
@@ -106,7 +107,16 @@ func SetupViews(r *gin.Engine) {
 
 // LoadHTMLFromEmbedFS loads specific HTML templates from an embedded filesystem and registers them with Gin.
 func LoadHTMLFromEmbedFS(r *gin.Engine, embeddedFS embed.FS, files ...string) error {
-	templ := template.New("")
+	templ := template.New("").Funcs(template.FuncMap{
+		"setViewMode": func(info any, mode string) any {
+			if v, ok := info.(*entity.ChannelInfo); ok {
+				cp := *v
+				cp.ViewMode = mode
+				return &cp
+			}
+			return info
+		},
+	})
 	for _, file := range files {
 		content, err := embeddedFS.ReadFile(file)
 		if err != nil {
