@@ -1,6 +1,6 @@
 # GoondVR
 
-A self-hosted web UI and CLI for recording public livestreams from Chaturbate and Stripchat. Supports macOS, Windows, Linux, and Docker. Favicon from [Twemoji](https://github.com/twitter/twemoji).
+A self-hosted web UI and CLI for recording public livestreams from Chaturbate, Stripchat, and MyFreeCams. Supports macOS, Windows, Linux, and Docker. Favicon from [Twemoji](https://github.com/twitter/twemoji).
 
 > [!IMPORTANT]
 > The original `teacat/chaturbate-dvr` repository is archived and no longer maintained. This fork remains active and includes ongoing fixes, new releases, and additional features like Stripchat support.
@@ -9,7 +9,7 @@ Features added in this version include:
 
 - Updated web UI
 - Live stream thumbnails for streaming channels and previews for offline channels
-- Stripchat support
+- Stripchat and MyFreeCams support
 - Discord webhook and `ntfy` notifications
 
 Example dashboard and settings views from the current web UI.
@@ -114,7 +114,7 @@ Available options:
 
 ```
 --username value, -u value  The username of the channel to record
---site value                Site to record from: chaturbate or stripchat (default: "chaturbate")
+--site value                Site to record from: chaturbate, stripchat, or myfreecams (default: "chaturbate")
 --admin-username value      Username for web authentication (optional)
 --admin-password value      Password for web authentication (optional)
 --framerate value           Desired framerate (FPS) (default: 30)
@@ -147,6 +147,9 @@ $ ./goondvr -u yamiodymel -resolution 720 -framerate 60
 
 # Record from Stripchat
 $ ./goondvr -u some_model --site stripchat
+
+# Record from MyFreeCams
+$ ./goondvr -u some_model --site myfreecams
 
 # Split every 30 minutes
 $ ./goondvr -u yamiodymel -max-duration 30

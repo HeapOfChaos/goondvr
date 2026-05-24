@@ -155,6 +155,8 @@ func (ch *Channel) ExportInfo() *entity.ChannelInfo {
 	siteDomain := server.Config.Domain // default to Chaturbate domain
 	if ch.Config.Site == "stripchat" {
 		siteDomain = "https://stripchat.com/"
+	} else if ch.Config.Site == "myfreecams" {
+		siteDomain = "https://app.myfreecams.com/"
 	}
 
 	site := ch.Config.Site

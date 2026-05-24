@@ -18,7 +18,7 @@ const (
 type ChannelConfig struct {
 	IsPaused    bool   `json:"is_paused"`
 	Username    string `json:"username"`
-	Site        string `json:"site,omitempty"` // "chaturbate" (default) or "stripchat"
+	Site        string `json:"site,omitempty"` // "chaturbate" (default), "stripchat", or "myfreecams"
 	Framerate   int    `json:"framerate"`
 	Resolution  int    `json:"resolution"`
 	Pattern     string `json:"pattern"`
@@ -41,8 +41,9 @@ func (c *ChannelConfig) Sanitize() {
 
 // NormalizeSite returns a supported site name, defaulting to Chaturbate.
 func NormalizeSite(site string) string {
-	if site == "stripchat" {
-		return "stripchat"
+	switch site {
+	case "stripchat", "myfreecams":
+		return site
 	}
 	return "chaturbate"
 }
@@ -88,8 +89,8 @@ type ChannelInfo struct {
 	EdgeRegion       string
 	SummaryCardImage string
 	LiveThumbURL     string // live-updating thumbnail; empty = use platform default
-	Site             string // "chaturbate" (default) or "stripchat"
-	SiteDomain       string // pre-computed site URL, e.g. "https://chaturbate.com/" or "https://stripchat.com/"
+	Site             string // "chaturbate" (default), "stripchat", or "myfreecams"
+	SiteDomain       string // pre-computed site URL
 }
 
 // Config holds the configuration for the application.
