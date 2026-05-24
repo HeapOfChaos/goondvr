@@ -202,10 +202,13 @@ func FetchPlaylist(ctx context.Context, hlsSource string, resolution, framerate 
 	pkey := stripchat.ParsePKeyFromMaster(resp)
 	if pkey != "" {
 		// Build the query suffix needed for variant playlist URLs.
-		mouflonSuffix = fmt.Sprintf("&psch=v2&pkey=%s", pkey)
+		mediaPKey := stripchat.ResolveMediaPKey(ctx, pkey)
+		mouflonSuffix = fmt.Sprintf("&psch=v2&pkey=%s", mediaPKey)
 
-		// Resolve the actual decryption key (pdkey) from the pkey.
-		if mouflonPDKey == "auto" {
+		// Current Stripchat playlists are unlocked by the player-derived pkey.
+		// Fall back to the older URI decryption path only if pkey extraction
+		// failed and we had to use the master playlist pkey unchanged.
+		if mediaPKey == pkey && mouflonPDKey == "auto" {
 			mouflonPDKey = stripchat.ResolvePDKey(ctx, pkey)
 			if mouflonPDKey == "pending" {
 				if server.Config.Debug {
@@ -519,6 +522,7 @@ func (p *Playlist) watchVideoOnlySegments(ctx context.Context, handler WatchHand
 	lastSegURI := ""
 	lastMapURI := ""
 	consecutiveErrors := 0
+	var pendingInitBytes []byte
 
 	// For fMP4 streams, normalise tfdt timestamps so the recording starts
 	// at 0:00 instead of the CDN's absolute stream uptime. Always attempt
@@ -598,9 +602,7 @@ func (p *Playlist) watchVideoOnlySegments(ctx context.Context, handler WatchHand
 				if err != nil {
 					return fmt.Errorf("get init segment: %w", err)
 				}
-				if err := handler(initBytes, 0); err != nil {
-					return fmt.Errorf("handler init segment: %w", err)
-				}
+				pendingInitBytes = initBytes
 				lastMapURI = v.Map.URI
 			}
 
@@ -637,6 +639,12 @@ func (p *Playlist) watchVideoOnlySegments(ctx context.Context, handler WatchHand
 			}
 			if trackBaseTimes != nil {
 				resp = shiftSegmentAllTracks(resp, trackBaseTimes)
+			}
+			if pendingInitBytes != nil {
+				if err := handler(pendingInitBytes, 0); err != nil {
+					return fmt.Errorf("handler init segment: %w", err)
+				}
+				pendingInitBytes = nil
 			}
 			if err := handler(resp, v.Duration); err != nil {
 				return fmt.Errorf("handler: %w", err)

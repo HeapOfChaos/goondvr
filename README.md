@@ -126,7 +126,7 @@ Available options:
 --interval value            Check if the channel is online every N minutes (default: 1)
 --cookies value             Cookies to use in the request (format: key=value; key2=value2)
 --user-agent value          Custom User-Agent for the request
---stripchat-pdkey value     Manually specify Stripchat pdkey if keys have rotated
+--stripchat-pdkey value     Manually specify legacy Stripchat MOUFLON URI decryption key (auto-detected when possible)
 --domain value              Chaturbate domain to use (default: "https://chaturbate.com/")
 --completed-dir value       Directory to move fully closed recordings into (default: <recording dir>/completed)
 --finalize-mode value       Post-process closed recordings: none, remux, or transcode (default: "none")
@@ -175,6 +175,16 @@ $ ./goondvr -u yamiodymel \
 ```
 
 _Note: In Web UI mode, these flags serve as default values for new channels._
+
+## Stripchat MOUFLON playlists
+
+Stripchat LL-HLS playlists include MOUFLON metadata. The master playlist pkey is
+not enough to request media segments directly; the current Stripchat MMP player
+derives the media playlist pkey at runtime before loading segments. goondvr
+fetches the current MMP player script and derives that media pkey automatically.
+The `--stripchat-pdkey` option remains available as a fallback for older
+MOUFLON URI decryption behavior, but normal Stripchat recordings should not need
+a manually configured key.
 
 When the app is stopped with `Ctrl+C` or the container shuts down, it now waits for active recordings to close and for any finalization moves to finish before exiting.
 

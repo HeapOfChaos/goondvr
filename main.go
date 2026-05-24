@@ -138,7 +138,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:  "stripchat-pdkey",
-				Usage: "Stripchat MOUFLON v2 decryption key (auto-extracted if omitted)",
+				Usage: "Legacy Stripchat MOUFLON URI decryption key (auto-detected when possible)",
 				Value: "",
 			},
 		},

@@ -128,5 +128,5 @@ type Config struct {
 	CFGlobalThreshold   int // channels hitting CF in same window for global alert; default 3
 	NotifyCooldownHours int // hours between repeated alerts of the same type; default 4
 	NotifyStreamOnline  bool
-	StripchatPDKey      string // MOUFLON v2 decryption key; auto-extracted or manual override
+	StripchatPDKey      string // Legacy MOUFLON URI decryption key; auto-detected or manual override
 }
