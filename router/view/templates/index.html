@@ -145,7 +145,7 @@
             <div class="ts-blankslate">
                 <span class="ts-icon is-eye-low-vision-icon"></span>
                 <div class="header">No channels are currently recording</div>
-                <div class="description">Add a new Chaturbate channel to start recording.</div>
+                <div class="description">Add a new channel to start recording.</div>
                 <div class="action">
                     <button class="ts-button is-start-icon" data-dialog="create-dialog">
                         <span class="ts-icon is-plus-icon"></span>
@@ -553,6 +553,7 @@
                                     <select name="site">
                                         <option value="chaturbate" selected>Chaturbate</option>
                                         <option value="stripchat">Stripchat</option>
+                                        <option value="myfreecams">MyFreeCams</option>
                                     </select>
                                 </div>
                             </div>
@@ -656,7 +657,7 @@
 
         <script>
             const LIVE_THUMB_URL = (username, site, channelID) => {
-                if (site === 'stripchat') return `/live-thumb/${encodeURIComponent(channelID)}`;
+                if (site === 'stripchat' || site === 'myfreecams') return `/live-thumb/${encodeURIComponent(channelID)}`;
                 return `https://thumb.live.mmcdn.com/riw/${username}.jpg`;
             };
             const CARD_THUMB_URL = channelID => `/thumb/${encodeURIComponent(channelID)}`;

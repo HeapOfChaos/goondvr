@@ -122,7 +122,11 @@ func LiveThumbProxy(c *gin.Context) {
 		return
 	}
 
-	req := internal.NewMediaReqWithReferer("https://stripchat.com/")
+	referer := "https://stripchat.com/"
+	if strings.Contains(imgURL, "mfcimg.com") {
+		referer = "https://app.myfreecams.com/"
+	}
+	req := internal.NewMediaReqWithReferer(referer)
 	imgBytes, err := req.GetBytes(c.Request.Context(), imgURL)
 	if err != nil {
 		c.Status(http.StatusBadGateway)

@@ -38,7 +38,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:  "site",
-				Usage: "Site to record from: chaturbate or stripchat",
+				Usage: "Site to record from: chaturbate, stripchat, or myfreecams",
 				Value: "chaturbate",
 			},
 			&cli.StringFlag{

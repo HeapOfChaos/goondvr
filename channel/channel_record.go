@@ -9,6 +9,7 @@ import (
 
 	"github.com/HeapOfChaos/goondvr/chaturbate"
 	"github.com/HeapOfChaos/goondvr/internal"
+	"github.com/HeapOfChaos/goondvr/myfreecams"
 	"github.com/HeapOfChaos/goondvr/notifier"
 	"github.com/HeapOfChaos/goondvr/server"
 	"github.com/HeapOfChaos/goondvr/site"
@@ -22,6 +23,8 @@ func resolveSite(siteName string) site.Site {
 	switch siteName {
 	case "stripchat":
 		return stripchat.New()
+	case "myfreecams":
+		return myfreecams.New()
 	default:
 		return chaturbate.New()
 	}

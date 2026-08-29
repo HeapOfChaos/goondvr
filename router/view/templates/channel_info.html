@@ -1,3 +1,5 @@
+{{ define "site_name" }}{{ if eq .Site "myfreecams" }}MyFreeCams{{ else if eq .Site "stripchat" }}Stripchat{{ else }}Chaturbate{{ end }}{{ end }}
+
 {{ define "channel_thumb" }}
 {{ if eq .ViewMode "expanded" }}
 <div class="view-expanded">
@@ -50,7 +52,7 @@
     <div class="ts-grid is-middle-aligned has-top-spaced-small">
         <div class="column is-fluid">
             <div class="ts-header">{{ .Username }}</div>
-            <div class="ts-text is-description is-small">{{ if eq .Site "stripchat" }}Stripchat{{ else }}Chaturbate{{ end }}</div>
+            <div class="ts-text is-description is-small">{{ template "site_name" . }}</div>
             {{ if .RoomTitle }}<div class="ts-text is-description is-small has-top-spaced-small" style="line-height:1.3">{{ .RoomTitle }}</div>{{ end }}
         </div>
         <div class="column">
@@ -137,7 +139,7 @@
             {{ end }}
         </div>
         <div class="column">
-            <form action="/stop_channel/{{ .ChannelID }}" method="POST" onsubmit="return handleDeleteSubmit(this, 'Are you sure you want to delete `{{ .Username }}` on {{ if eq .Site "stripchat" }}Stripchat{{ else }}Chaturbate{{ end }}?')">
+            <form action="/stop_channel/{{ .ChannelID }}" method="POST" onsubmit="return handleDeleteSubmit(this, 'Are you sure you want to delete `{{ .Username }}` on {{ template "site_name" . }}?')">
                 <button class="ts-button is-start-icon is-outlined is-negative is-fluid" data-pending-label="Deleting...">
                     <span class="ts-icon is-trash-icon"></span>Delete
                 </button>
@@ -152,7 +154,7 @@
         <div class="ts-grid is-middle-aligned">
             <div class="column is-fluid">
                 <strong>{{ .Username }}</strong>
-                <div class="ts-text is-description is-small">{{ if eq .Site "stripchat" }}Stripchat{{ else }}Chaturbate{{ end }}</div>
+                <div class="ts-text is-description is-small">{{ template "site_name" . }}</div>
             </div>
             <div class="column">
                 {{ if and .IsOnline (not .IsPaused) }}<span class="ts-badge is-small">REC</span>
@@ -181,7 +183,7 @@
                 {{ end }}
             </div>
             <div class="column">
-                <form action="/stop_channel/{{ .ChannelID }}" method="POST" onsubmit="return handleDeleteSubmit(this, 'Are you sure you want to delete `{{ .Username }}` on {{ if eq .Site "stripchat" }}Stripchat{{ else }}Chaturbate{{ end }}?')">
+                <form action="/stop_channel/{{ .ChannelID }}" method="POST" onsubmit="return handleDeleteSubmit(this, 'Are you sure you want to delete `{{ .Username }}` on {{ template "site_name" . }}?')">
                     <button class="ts-button is-small is-start-icon is-outlined is-negative is-fluid" data-pending-label="Deleting..."><span class="ts-icon is-trash-icon"></span>Delete</button>
                 </form>
             </div>
@@ -208,7 +210,7 @@
         {{ else }}
         <form><button class="ts-button is-small is-start-icon is-secondary" hx-post="/pause_channel/{{ .ChannelID }}" hx-swap="none" hx-disabled-elt="this" data-pending-label="Pausing..."><span class="ts-icon is-pause-icon"></span>Pause</button></form>
         {{ end }}
-        <form action="/stop_channel/{{ .ChannelID }}" method="POST" onsubmit="return handleDeleteSubmit(this, 'Are you sure you want to delete `{{ .Username }}` on {{ if eq .Site "stripchat" }}Stripchat{{ else }}Chaturbate{{ end }}?')">
+        <form action="/stop_channel/{{ .ChannelID }}" method="POST" onsubmit="return handleDeleteSubmit(this, 'Are you sure you want to delete `{{ .Username }}` on {{ template "site_name" . }}?')">
             <button class="ts-button is-small is-icon is-outlined is-negative" data-pending-label="Deleting..."><span class="ts-icon is-trash-icon"></span></button>
         </form>
     </div>
