@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/HeapOfChaos/goondvr/chaturbate"
+	"github.com/HeapOfChaos/goondvr/detect"
 	"github.com/HeapOfChaos/goondvr/server"
 )
 
@@ -83,6 +84,7 @@ func (ch *Channel) cleanupLocked() error {
 	}
 	ch.File = nil
 	journalClosed(filename)
+	ch.detectFileClosed(filename)
 
 	// Delete the empty file
 	fileInfo, err := os.Stat(filename)
@@ -93,6 +95,7 @@ func (ch *Channel) cleanupLocked() error {
 		if err := os.Remove(filename); err != nil {
 			return fmt.Errorf("remove zero file: %w", err)
 		}
+		_ = os.Remove(detect.SidecarPath(filename))
 		journalDone(filename)
 		ch.scanAsync()
 	} else if fileInfo != nil {
@@ -176,6 +179,7 @@ func (ch *Channel) createNewFileLocked(filename, ext string) error {
 
 	ch.File = file
 	journalOpen(file.Name())
+	ch.detectFileOpened()
 	return nil
 }
 
@@ -332,8 +336,10 @@ func (ch *Channel) finalizeRecording(filename string) {
 			ch.Error("move completed recording `%s`: %s", finalPath, err.Error())
 		} else {
 			ch.Info("completed recording moved to `%s`", dst)
+			finalPath = dst
 		}
 	}
+	ch.cutClips(shutdownCtx, filename, finalPath)
 
 	journalDone(filename)
 	ch.scanAsync()

@@ -31,8 +31,10 @@ type Manager struct {
 
 	presence presenceEngine // keeps the "on air" mark of the channels up to date (presence.go)
 
-	cfgMu         sync.Mutex // one change to the channel list or to the filename patterns at a time (pattern conflicts)
-	autoLastStart time.Time  // last automatic start (auto.go); only the presence loop touches it
+	cfgMu         sync.Mutex         // one change to the channel list or to the filename patterns at a time (pattern conflicts)
+	autoMu        sync.Mutex         // autoStep runs from the presence loop and from the detection workers
+	autoLastStart time.Time          // last automatic start (auto.go), guarded by autoMu
+	detectStop    context.CancelFunc // stops the image detection engine (detect.go)
 
 	closing atomic.Bool // Shutdown has saved the channel list: later saves must not overwrite it (Stop marks every channel paused)
 
@@ -61,6 +63,9 @@ func New() (*Manager, error) {
 	m.presence.kick = make(chan struct{}, 1)
 	go m.diskMonitor()
 	go m.presenceLoop()
+	var detectCtx context.Context
+	detectCtx, m.detectStop = context.WithCancel(context.Background())
+	go m.detectLoop(detectCtx)
 
 	// Keep-alive for the SSE connections. It is an SSE *comment*: browsers ignore
 	// it, but dead connections are noticed and proxies keep the stream open. (It
@@ -119,6 +124,11 @@ type settings struct {
 	PresenceInterval int    `json:"presence_interval,omitempty"`
 	// Global threshold of the "record automatically" option of the channels.
 	AutoMinFreeGB int `json:"auto_min_free_gb,omitempty"`
+	// Image detection: where the detector runs (the per-channel options are in channels.json).
+	DetectBackend  string `json:"detect_backend,omitempty"`
+	DetectLocalURL string `json:"detect_local_url,omitempty"`
+	DetectColabURL string `json:"detect_colab_url,omitempty"`
+	DetectToken    string `json:"detect_token,omitempty"`
 	// Defaults for the channels that are added from now on (nil = not saved: the
 	// command-line / built-in value is used). A channel can change them afterwards.
 	DefaultFramerate   *int    `json:"default_framerate,omitempty"`
@@ -208,6 +218,10 @@ func SaveSettings() error {
 		PresenceListURL:     server.Config.PresenceListURL,
 		PresenceInterval:    server.Config.PresenceInterval,
 		AutoMinFreeGB:       server.Config.AutoMinFreeGB,
+		DetectBackend:       server.Config.DetectBackend,
+		DetectLocalURL:      server.Config.DetectLocalURL,
+		DetectColabURL:      server.Config.DetectColabURL,
+		DetectToken:         server.Config.DetectToken,
 	}
 	// The defaults of new channels are saved once the person has chosen them in
 	// Settings (that is the only place that calls SaveSettings).
@@ -307,6 +321,10 @@ func LoadSettings() error {
 	server.Config.PresenceCampaign = strings.TrimSpace(s.PresenceCampaign)
 	server.Config.PresenceListURL = strings.TrimSpace(s.PresenceListURL)
 	server.Config.PresenceInterval = s.PresenceInterval
+	server.Config.DetectBackend = entity.NormalizeDetectBackend(s.DetectBackend)
+	server.Config.DetectLocalURL = s.DetectLocalURL
+	server.Config.DetectColabURL = s.DetectColabURL
+	server.Config.DetectToken = s.DetectToken
 	server.Config.AutoMinFreeGB = s.AutoMinFreeGB
 	if server.Config.AutoMinFreeGB <= 0 {
 		server.Config.AutoMinFreeGB = DefaultAutoMinFreeGB
@@ -800,6 +818,9 @@ var shutdownBudget = 4 * time.Second
 // stay on the journal of open recordings and are finished at the next start.
 func (m *Manager) Shutdown() {
 	channel.BeginShutdown()
+	if m.detectStop != nil {
+		m.detectStop()
+	}
 	_ = m.SaveConfig()
 	m.closing.Store(true)
 	persist.Backup(channelsFile, true)

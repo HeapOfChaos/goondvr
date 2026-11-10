@@ -81,6 +81,48 @@ type UpdateChannelRequest struct {
 	MaxFilesize   *int    `form:"max_filesize"`
 	AutoRecord    *bool   `form:"auto_record"`
 	AutoDiskCheck *bool   `form:"auto_disk_check"` // "1" = respect the free-space limit (the default)
+
+	// Image detection (sent together by the settings dialog; DetectEnabled absent = not touched).
+	DetectEnabled  *bool    `form:"detect_enabled"`
+	DetectModel    string   `form:"detect_model"`
+	DetectSource   string   `form:"detect_source"`
+	DetectLabels   string   `form:"detect_labels"`    // comma separated
+	DetectMinScore *float64 `form:"detect_min_score"` // percent, 1..100
+	DetectInterval int      `form:"detect_interval"`
+	DetectGate     bool     `form:"detect_gate"`
+	DetectIdle     int      `form:"detect_idle"`
+	DetectClips    bool     `form:"detect_clips"`
+	DetectPre      int      `form:"detect_pre"`
+	DetectPost     int      `form:"detect_post"`
+}
+
+// detectPatch builds the detection block of a channel from the dialog fields.
+func (r *UpdateChannelRequest) detectPatch() *entity.DetectConfig {
+	if r.DetectEnabled == nil {
+		return nil
+	}
+	d := &entity.DetectConfig{
+		Enabled:  *r.DetectEnabled,
+		Model:    strings.TrimSpace(r.DetectModel),
+		Source:   strings.TrimSpace(r.DetectSource),
+		Interval: r.DetectInterval,
+		Gate:     r.DetectGate,
+		Idle:     r.DetectIdle,
+		Clips:    r.DetectClips,
+		Pre:      r.DetectPre,
+		Post:     r.DetectPost,
+	}
+	if r.DetectMinScore != nil {
+		d.MinScore = *r.DetectMinScore / 100
+	}
+	seen := map[string]bool{}
+	for _, l := range strings.Split(r.DetectLabels, ",") {
+		if l = strings.TrimSpace(l); l != "" && !seen[strings.ToLower(l)] {
+			seen[strings.ToLower(l)] = true
+			d.Labels = append(d.Labels, l)
+		}
+	}
+	return d
 }
 
 // UpdateChannel changes the settings of one channel. The card is redrawn by the
@@ -97,6 +139,7 @@ func UpdateChannel(c *gin.Context) {
 		MaxDuration: req.MaxDuration,
 		MaxFilesize: req.MaxFilesize,
 		AutoRecord:  req.AutoRecord,
+		Detect:      req.detectPatch(),
 	}
 	if req.Pattern != nil {
 		p := strings.TrimSpace(*req.Pattern)
@@ -215,6 +258,21 @@ func Stats(c *gin.Context) {
 	c.JSON(http.StatusOK, server.Manager.GetStats())
 }
 
+// DetectModels asks the image detector which models it has. The settings form sends what is typed in it
+// (not saved yet) so that "Test" tests that; without them the saved settings are used.
+func DetectModels(c *gin.Context) {
+	var o *server.DetectSettings
+	if c.PostForm("detect_backend") != "" {
+		o = &server.DetectSettings{
+			Backend:  c.PostForm("detect_backend"),
+			LocalURL: strings.TrimSpace(c.PostForm("detect_local_url")),
+			ColabURL: strings.TrimSpace(c.PostForm("detect_colab_url")),
+			Token:    strings.TrimSpace(c.PostForm("detect_token")),
+		}
+	}
+	c.JSON(http.StatusOK, server.Manager.DetectModels(c.Request.Context(), o))
+}
+
 // UpdateConfigRequest represents the request body for updating configuration.
 type UpdateConfigRequest struct {
 	BrowserExport       string `form:"browser_export"`
@@ -251,6 +309,11 @@ type UpdateConfigRequest struct {
 	PresenceInterval *int   `form:"presence_interval"`
 	// Automatic recording: free disk space (GB) below which it waits
 	AutoMinFreeGB *int `form:"auto_min_free_gb"`
+	// Image detection: where the detector runs
+	DetectBackend  string `form:"detect_backend"`
+	DetectLocalURL string `form:"detect_local_url"`
+	DetectColabURL string `form:"detect_colab_url"`
+	DetectToken    string `form:"detect_token"`
 	// Defaults of the channels added from now on
 	DefaultFramerate   int    `form:"default_framerate"`
 	DefaultResolution  int    `form:"default_resolution"`
@@ -352,6 +415,18 @@ func UpdateConfig(c *gin.Context) {
 	if v := req.DefaultMaxFilesize; v != nil && *v >= 0 {
 		server.Config.MaxFilesize = *v
 	}
+	if err := manager.ValidateDetectURL(req.DetectLocalURL, false); err != nil {
+		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("detector on this computer: %w", err))
+		return
+	}
+	if err := manager.ValidateDetectURL(req.DetectColabURL, true); err != nil {
+		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("detector on Colab: %w", err))
+		return
+	}
+	server.Config.DetectBackend = entity.NormalizeDetectBackend(req.DetectBackend)
+	server.Config.DetectLocalURL = strings.TrimSpace(req.DetectLocalURL)
+	server.Config.DetectColabURL = strings.TrimSpace(req.DetectColabURL)
+	server.Config.DetectToken = strings.TrimSpace(req.DetectToken)
 	server.Manager.ResetPresence() // the list may have just been configured
 
 	if err := manager.SaveSettings(); err != nil {

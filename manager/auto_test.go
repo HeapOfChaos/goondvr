@@ -3,6 +3,7 @@ package manager
 import (
 	"encoding/json"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -204,8 +205,9 @@ func TestUpdateChannelValidatesAndApplies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := entity.ChannelSettings{Resolution: 720, Framerate: 30, Pattern: "other/{{.Username}}_{{.Year}}", MaxDuration: 30, MaxFilesize: 500, AutoRecord: true, AutoNoDiskCheck: true}
-	if got := ch["alice"].Settings(); got != want {
+	want := entity.ChannelSettings{Resolution: 720, Framerate: 30, Pattern: "other/{{.Username}}_{{.Year}}", MaxDuration: 30, MaxFilesize: 500, AutoRecord: true, AutoNoDiskCheck: true,
+		Detect: entity.DetectConfig{}.WithDefaults()} // detection is off, with its defaults ready for the dialog
+	if got := ch["alice"].Settings(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("settings = %+v, want %+v", got, want)
 	}
 	// only what is sent changes

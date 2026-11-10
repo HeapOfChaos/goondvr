@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log"
+	"math"
 	"net/http"
 
 	"github.com/HeapOfChaos/goondvr/entity"
@@ -21,6 +22,7 @@ func init() {
 	var err error
 
 	InfoTpl, err = template.New("update").Funcs(template.FuncMap{
+		"pct": Pct,
 		"setViewMode": func(info any, mode string) any {
 			if v, ok := info.(*entity.ChannelInfo); ok {
 				cp := *v
@@ -34,6 +36,9 @@ func init() {
 		log.Fatalf("failed to parse template: %v", err)
 	}
 }
+
+// Pct shows a fraction as a percentage (0.6 -> 60).
+func Pct(f float64) int { return int(math.Round(f * 100)) }
 
 // StaticFS initializes the static file system for serving frontend files.
 func StaticFS() (http.FileSystem, error) {

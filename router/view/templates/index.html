@@ -532,6 +532,46 @@
                         </div>
                         <!-- / Automatic recording -->
 
+                        <!-- Image detection -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Image detection</div>
+                            <div class="content">
+                                <div class="ts-content is-padded is-secondary">
+                                    <div class="ts-text is-bold">Where the detector runs</div>
+                                    <div class="ts-wrap is-compact is-vertical has-top-spaced-small">
+                                        <label class="ts-radio"><input type="radio" name="detect_backend" value="local" {{ if ne .Config.DetectBackend "colab" }}checked{{ end }} /> On this computer (CPU, or the GPU if it is faster)</label>
+                                        <label class="ts-radio"><input type="radio" name="detect_backend" value="colab" {{ if eq .Config.DetectBackend "colab" }}checked{{ end }} /> On Google Colab</label>
+                                    </div>
+                                    <div class="ts-grid is-relaxed is-2-columns has-top-spaced">
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Address on this computer</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="text" name="detect_local_url" value="{{ .Config.DetectLocalURL }}" placeholder="http://127.0.0.1:8099" />
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Address of the Colab notebook</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="text" name="detect_colab_url" value="{{ .Config.DetectColabURL }}" placeholder="https://….trycloudflare.com" />
+                                            </div>
+                                        </div>
+                                        <div class="column" style="grid-column: 1 / -1">
+                                            <div class="ts-text is-bold">Token</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="password" name="detect_token" value="{{ .Config.DetectToken }}" placeholder="the one the detector (or the notebook) prints" autocomplete="off" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="ts-wrap has-top-spaced">
+                                        <button type="button" id="detect-test" class="ts-button is-outlined is-secondary">Test connection</button>
+                                    </div>
+                                    <div id="detect-test-result" class="ts-text is-description has-top-spaced-small"></div>
+                                    <div class="ts-text is-description has-top-spaced">Off for every channel until you turn it on in its own settings (gear button). The detector is a small separate program (folder <code>detector</code>, see <code>docs/GUIA_DETECCION.md</code>). It looks at pictures of the channels you choose and can hold the recording back until something you trained it for shows up, and cut clips of those moments. With Colab, the pictures travel to Google's servers.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / Image detection -->
+
                         <!-- Completed Directory -->
                         <div class="ts-control is-wide has-top-spaced-large">
                             <div class="label">Completed Directory</div>
@@ -965,6 +1005,85 @@
                                     Only if at least <strong>{{ .Config.AutoMinFreeGB }} GB</strong> are free on the recording disk
                                 </label>
                                 <div class="ts-text is-description has-top-spaced-small">The limit is the same for every channel (Settings &rarr; Automatic recording).</div>
+                            </div>
+                        </div>
+                        <div class="ts-divider has-vertically-spaced-large"></div>
+
+                        <div class="ts-control is-wide">
+                            <div class="label">Image detection</div>
+                            <div class="content">
+                                <label class="ts-switch">
+                                    <input type="checkbox" id="cd-det-on" />
+                                    Look at this channel's pictures with the detector
+                                </label>
+                                <div id="cd-det-body" class="has-top-spaced-small" hidden>
+                                    <div class="ts-text is-bold">Model</div>
+                                    <div class="ts-input has-top-spaced-small">
+                                        <input type="text" id="cd-det-model" list="cd-det-models" placeholder="name of the model" autocomplete="off" />
+                                        <datalist id="cd-det-models"></datalist>
+                                    </div>
+                                    <div id="cd-det-modelinfo" class="ts-text is-description has-top-spaced-small"></div>
+
+                                    <div class="ts-grid is-relaxed is-2-columns has-top-spaced">
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Picture from</div>
+                                            <div class="ts-select has-top-spaced-small">
+                                                <select id="cd-det-source">
+                                                    <option value="thumb">The preview picture</option>
+                                                    <option value="stream">The recording (needs ffmpeg)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Check every</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" id="cd-det-interval" min="2" max="3600" />
+                                                <span class="label">sec</span>
+                                            </div>
+                                        </div>
+                                        <div class="column" style="grid-column: 1 / -1">
+                                            <div class="ts-text is-bold">It counts when it finds</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="text" id="cd-det-labels" placeholder="labels separated by commas; empty = anything the model knows" />
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">With at least</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" id="cd-det-min" min="1" max="100" />
+                                                <span class="label">%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <label class="ts-checkbox has-top-spaced">
+                                        <input type="checkbox" id="cd-det-gate" />
+                                        Record only while it matches
+                                    </label>
+                                    <div class="ts-grid is-relaxed is-2-columns has-top-spaced-small">
+                                        <div class="column">
+                                            <div class="ts-input is-end-labeled">
+                                                <input type="number" id="cd-det-idle" min="5" max="86400" />
+                                                <span class="label">sec</span>
+                                            </div>
+                                        </div>
+                                        <div class="column"><div class="ts-text is-description">without a match and it stops (it starts again at the next match; the preview picture is needed)</div></div>
+                                    </div>
+
+                                    <label class="ts-checkbox has-top-spaced">
+                                        <input type="checkbox" id="cd-det-clips" />
+                                        Cut clips of the matches when the recording is finished
+                                    </label>
+                                    <div class="ts-grid is-relaxed is-2-columns has-top-spaced-small">
+                                        <div class="column">
+                                            <div class="ts-input is-end-labeled"><input type="number" id="cd-det-pre" min="0" max="300" /><span class="label">sec before</span></div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-input is-end-labeled"><input type="number" id="cd-det-post" min="0" max="300" /><span class="label">sec after</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="ts-text is-description has-top-spaced-small">The clips are copies cut from the recording (no re-encoding, so they start at the nearest key frame) saved next to it. The list of matches is saved as <code>.detect.json</code>.</div>
+                                </div>
                             </div>
                         </div>
                         <div id="cd-error" role="alert"></div>
@@ -1930,6 +2049,18 @@
                 document.getElementById('cd-max-dur').value = d.maxDur;
                 document.getElementById('cd-auto').checked = d.auto === '1';
                 document.getElementById('cd-disk').checked = d.diskCheck === '1';
+                document.getElementById('cd-det-on').checked = d.detOn === '1';
+                document.getElementById('cd-det-model').value = d.detModel || '';
+                document.getElementById('cd-det-source').value = d.detSource || 'thumb';
+                document.getElementById('cd-det-labels').value = d.detLabels || '';
+                document.getElementById('cd-det-min').value = d.detMin || '60';
+                document.getElementById('cd-det-interval').value = d.detInterval || '10';
+                document.getElementById('cd-det-gate').checked = d.detGate === '1';
+                document.getElementById('cd-det-idle').value = d.detIdle || '60';
+                document.getElementById('cd-det-clips').checked = d.detClips === '1';
+                document.getElementById('cd-det-pre').value = d.detPre || '5';
+                document.getElementById('cd-det-post').value = d.detPost || '10';
+                cdDetSync();
                 cdError.classList.remove('is-shown');
                 document.getElementById('cd-save').disabled = false;
                 if (!channelDialog.open) channelDialog.showModal();
@@ -1943,6 +2074,9 @@
                         copyText(btn.dataset.link).then(function () { flashGlyph(btn, '\u2713'); }, function () { flashGlyph(btn, '!'); });
                     } else if (btn.dataset.act === 'settings') {
                         openChannelDialog(btn);
+                    } else if (btn.dataset.act === 'detect') { // the status chip opens the settings of its card
+                        const gear = btn.parentElement.querySelector('[data-act=settings]');
+                        if (gear) openChannelDialog(gear);
                     }
                     return;
                 }
@@ -1959,6 +2093,17 @@
                 fd.set('max_duration', document.getElementById('cd-max-dur').value || '0');
                 fd.set('auto_record', document.getElementById('cd-auto').checked ? '1' : '0');
                 fd.set('auto_disk_check', document.getElementById('cd-disk').checked ? '1' : '0');
+                fd.set('detect_enabled', document.getElementById('cd-det-on').checked ? '1' : '0');
+                fd.set('detect_model', document.getElementById('cd-det-model').value);
+                fd.set('detect_source', document.getElementById('cd-det-source').value);
+                fd.set('detect_labels', document.getElementById('cd-det-labels').value);
+                fd.set('detect_min_score', document.getElementById('cd-det-min').value || '60');
+                fd.set('detect_interval', document.getElementById('cd-det-interval').value || '0');
+                fd.set('detect_gate', document.getElementById('cd-det-gate').checked ? '1' : '0');
+                fd.set('detect_idle', document.getElementById('cd-det-idle').value || '0');
+                fd.set('detect_clips', document.getElementById('cd-det-clips').checked ? '1' : '0');
+                fd.set('detect_pre', document.getElementById('cd-det-pre').value || '0');
+                fd.set('detect_post', document.getElementById('cd-det-post').value || '0');
                 const save = document.getElementById('cd-save');
                 save.disabled = true;
                 fetch('/update_channel/' + encodeURIComponent(cdChannelID), {
@@ -1973,6 +2118,61 @@
                     cdError.classList.add('is-shown');
                     save.disabled = false;
                 });
+            });
+
+            // Image detection: the part of the channel dialog and the Test button of the settings.
+            const detModels = {}; // name -> {kind, labels, provider}
+            function cdDetSync() {
+                const on = document.getElementById('cd-det-on').checked;
+                document.getElementById('cd-det-body').hidden = !on;
+                const stream = document.getElementById('cd-det-source').value === 'stream';
+                const gate = document.getElementById('cd-det-gate');
+                gate.disabled = stream; // a channel that is not recorded has no recording to look at
+                if (stream) gate.checked = false;
+                document.getElementById('cd-det-idle').disabled = stream || !gate.checked;
+                const clips = document.getElementById('cd-det-clips').checked;
+                document.getElementById('cd-det-pre').disabled = document.getElementById('cd-det-post').disabled = !clips;
+                const m = detModels[document.getElementById('cd-det-model').value.trim()];
+                document.getElementById('cd-det-modelinfo').textContent = m
+                    ? (m.kind === 'yolox' ? 'Finds objects with boxes' : 'Classifies the whole picture') + ' · labels: ' + (m.labels || []).join(', ') + ' · runs on ' + (m.provider || '').replace('ExecutionProvider', '')
+                    : '';
+            }
+            function detPost(url, body) {
+                return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body || '' }).then(function (r) { return r.json(); });
+            }
+            function detLoadModels() {
+                detPost('/api/detect/models').then(function (r) {
+                    const dl = document.getElementById('cd-det-models');
+                    dl.textContent = '';
+                    Object.keys(detModels).forEach(function (k) { delete detModels[k]; });
+                    (r.models || []).forEach(function (m) {
+                        if (m.error) return;
+                        detModels[m.name] = m;
+                        const o = document.createElement('option'); o.value = m.name; dl.appendChild(o);
+                    });
+                    if (!r.ok) document.getElementById('cd-det-modelinfo').textContent = r.error || '';
+                    else cdDetSync();
+                }).catch(function () {});
+            }
+            ['cd-det-on', 'cd-det-source', 'cd-det-gate', 'cd-det-clips', 'cd-det-model'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener(id === 'cd-det-model' ? 'input' : 'change', cdDetSync);
+            });
+            if (channelDialog) channelDialog.addEventListener('toggle', function () { if (channelDialog.open) detLoadModels(); });
+            const detTest = document.getElementById('detect-test');
+            if (detTest) detTest.addEventListener('click', function () {
+                const out = document.getElementById('detect-test-result');
+                const f = detTest.form, fd = new URLSearchParams();
+                ['detect_backend', 'detect_local_url', 'detect_colab_url', 'detect_token'].forEach(function (n) {
+                    const el = f.querySelector('[name=' + n + ']:checked') || f.querySelector('[name=' + n + ']');
+                    fd.set(n, el ? el.value : '');
+                });
+                out.textContent = 'Testing…';
+                detPost('/api/detect/models', fd.toString()).then(function (r) {
+                    out.textContent = r.ok
+                        ? 'Connected. Models: ' + ((r.models || []).map(function (m) { return m.name + (m.error ? ' (error: ' + m.error + ')' : ' (' + m.kind + ', ' + (m.provider || '').replace('ExecutionProvider', '') + ')'); }).join(', ') || 'none yet')
+                        : 'Not working: ' + r.error;
+                }).catch(function (e) { out.textContent = 'Not working: ' + e.message; });
             });
 
             // Initial setup on page load

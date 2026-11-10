@@ -165,6 +165,7 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 	ch.fileMu.Lock()
 	ch.mp4InitSegment = nil
 	ch.fileMu.Unlock()
+	ch.detectClearSegments() // segments of an earlier stream do not belong to the new init segment
 
 	streamInfo, err := s.FetchStream(ctx, req, ch.Config.Username)
 
@@ -318,6 +319,7 @@ func (ch *Channel) handleSegmentForMonitor(runID uint64, b []byte, duration floa
 
 	ch.Filesize += n
 	ch.Duration += duration
+	ch.detectKeep(b)
 	formattedDuration := internal.FormatDuration(ch.Duration)
 	formattedFilesize := internal.FormatFilesize(ch.Filesize)
 	shouldSwitch := ch.shouldSwitchFileLocked()

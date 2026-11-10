@@ -29,6 +29,8 @@ const gib = 1 << 30
 // autoStep does what automatic recording needs now. It reports whether some
 // channel is still waiting for its turn (the caller comes back soon).
 func (m *Manager) autoStep() (pending bool) {
+	m.autoMu.Lock()
+	defer m.autoMu.Unlock()
 	type diskAnswer struct {
 		free uint64
 		ok   bool
@@ -92,6 +94,11 @@ func validatePatch(p *entity.ChannelPatch) error {
 	}
 	if p.MaxFilesize != nil && (*p.MaxFilesize < 0 || *p.MaxFilesize > 100_000_000) {
 		return fmt.Errorf("max filesize must be 0 or more MB")
+	}
+	if p.Detect != nil {
+		if err := validateDetect(p.Detect); err != nil {
+			return err
+		}
 	}
 	if p.Pattern != nil {
 		pat := *p.Pattern

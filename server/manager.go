@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/HeapOfChaos/goondvr/detect"
 	"github.com/HeapOfChaos/goondvr/entity"
 )
 
@@ -37,9 +38,23 @@ type IManager interface {
 	// ResetPresence makes the detection of the channels on the air try its main method
 	// again right away (the settings that control it were saved).
 	ResetPresence()
+	// DetectModels asks the image detector (the one in the settings, or the one described by override
+	// when it is not nil) which models it has; it also proves that the address and token work.
+	DetectModels(ctx context.Context, override *DetectSettings) DetectModelsResponse
 	// HasViewers reports whether any browser has the web UI open, so that work
 	// done only for the sake of the UI (renewing previews) can be skipped.
 	HasViewers() bool
+}
+
+// DetectSettings are the detector settings of the settings form, before they are saved.
+type DetectSettings struct{ Backend, LocalURL, ColabURL, Token string }
+
+// DetectModelsResponse is the answer of /api/detect/models.
+type DetectModelsResponse struct {
+	OK      bool               `json:"ok"`
+	Backend string             `json:"backend"`
+	Error   string             `json:"error,omitempty"`
+	Models  []detect.ModelInfo `json:"models"`
 }
 
 // StatsResponse holds system stats returned by the /api/stats endpoint.

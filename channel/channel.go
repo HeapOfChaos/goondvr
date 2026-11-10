@@ -79,6 +79,7 @@ type Channel struct {
 	autoWaiting  bool           // wants to start but is held back (low free disk space)
 	autoHold     bool           // the user paused it while it was on the air: not started again until that broadcast is over
 	scanWG       sync.WaitGroup // background scans of the recordings started by Apply
+	det          detectState    // image detection (see detect.go)
 
 	logsMu sync.RWMutex
 	Logs   []string
@@ -333,6 +334,7 @@ func (ch *Channel) ExportInfo() *entity.ChannelInfo {
 		LiveThumbURL:     liveThumb,
 		Tags:             tags,
 		Settings:         set,
+		Detect:           ch.detectInfo(set.Detect),
 		AutoWaiting:      autoWaiting,
 		Site:             site,
 		SiteDomain:       siteDomain,

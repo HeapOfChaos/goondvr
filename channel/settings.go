@@ -28,6 +28,7 @@ func (ch *Channel) settingsLocked() entity.ChannelSettings {
 		MaxFilesize:     c.MaxFilesize,
 		AutoRecord:      c.AutoRecord,
 		AutoNoDiskCheck: c.AutoNoDiskCheck,
+		Detect:          ch.detectCfgLocked(),
 	}
 }
 
@@ -58,13 +59,24 @@ func (ch *Channel) Apply(p entity.ChannelPatch) (patternChanged, autoChanged boo
 		c.AutoRecord = *p.AutoRecord
 		autoChanged = true
 		ch.autoHold = false
-		if !c.AutoRecord { // nothing is armed any more
-			ch.autoStarted, ch.autoOffSince, ch.autoWaiting = false, time.Time{}, false
-		}
 	}
 	if p.AutoNoDiskCheck != nil && *p.AutoNoDiskCheck != c.AutoNoDiskCheck {
 		c.AutoNoDiskCheck = *p.AutoNoDiskCheck
 		autoChanged = true
+	}
+	if p.Detect != nil {
+		d := *p.Detect
+		if d.Enabled || d.Model != "" { // a channel that never used detection keeps no block in its file
+			c.Detect = &d
+		} else {
+			c.Detect = nil
+		}
+		autoChanged = true // the gate arms or disarms the channel
+		ch.autoHold = false
+		ch.detectReset(d.Enabled && d.WithDefaults().Source == "stream")
+	}
+	if !ch.armedLocked() { // nothing is armed any more
+		ch.autoStarted, ch.autoOffSince, ch.autoWaiting = false, time.Time{}, false
 	}
 	ch.stateMu.Unlock()
 
@@ -93,7 +105,17 @@ func (ch *Channel) Apply(p entity.ChannelPatch) (patternChanged, autoChanged boo
 func (ch *Channel) AutoActive() bool {
 	ch.stateMu.RLock()
 	defer ch.stateMu.RUnlock()
-	return ch.Config.AutoRecord || ch.autoStarted || ch.autoWaiting
+	return ch.armedLocked() || ch.autoStarted || ch.autoWaiting
+}
+
+// armedLocked: the channel is kept paused until it is on the air, because it asked for auto-record or
+// because detection holds its recording back. Caller holds stateMu.
+func (ch *Channel) armedLocked() bool { return ch.Config.AutoRecord || ch.detectGateLocked() }
+
+// gateAllowsLocked: detection does not hold the channel back (it has no gate, or it matched lately).
+// Caller holds stateMu.
+func (ch *Channel) gateAllowsLocked(now time.Time) bool {
+	return !ch.detectGateLocked() || ch.gateOpen(now, ch.detectCfgLocked().Idle)
 }
 
 // AutoWant reports whether the engine should start the channel now: auto-record
@@ -105,7 +127,7 @@ func (ch *Channel) AutoWant() (want, noDiskCheck bool, pattern string) {
 	if !ch.Available && !ch.IsOnline {
 		ch.autoHold = false // the broadcast is over: the next one starts by itself again
 	}
-	armed := ch.Config.AutoRecord && !ch.autoHold
+	armed := ch.armedLocked() && !ch.autoHold && ch.gateAllowsLocked(time.Now())
 	noDiskCheck = ch.Config.AutoNoDiskCheck
 	pattern = ch.Config.Pattern
 	live := ch.Available && !ch.IsOnline
@@ -142,7 +164,7 @@ func (ch *Channel) AutoStart(why string) bool {
 		return false // resumed by hand in the meantime
 	}
 	ch.stateMu.Lock()
-	if !ch.Config.AutoRecord || ch.IsOnline {
+	if !ch.armedLocked() || ch.IsOnline {
 		ch.stateMu.Unlock()
 		return false
 	}
@@ -163,8 +185,16 @@ func (ch *Channel) AutoRelax(after time.Duration) bool {
 	}
 	if ch.IsOnline || ch.Available {
 		ch.autoOffSince = time.Time{}
+		gateClosed := !ch.gateAllowsLocked(time.Now())
+		if gateClosed {
+			ch.autoStarted = false
+		}
 		ch.stateMu.Unlock()
-		return false
+		if gateClosed { // detection has not matched for a while: stop recording, wait for the next match
+			ch.Info("detection: nothing matched for %d s, recording paused until it does again", ch.DetectConfig().Idle)
+			ch.Pause()
+		}
+		return gateClosed
 	}
 	now := time.Now()
 	if ch.autoOffSince.IsZero() {
@@ -196,7 +226,7 @@ func (ch *Channel) UserResumed() {
 func (ch *Channel) UserPaused() {
 	ch.stateMu.Lock()
 	ch.autoStarted, ch.autoOffSince = false, time.Time{}
-	ch.autoHold = ch.Config.AutoRecord && (ch.Available || ch.IsOnline)
+	ch.autoHold = ch.armedLocked() && (ch.Available || ch.IsOnline)
 	ch.stateMu.Unlock()
 }
 
