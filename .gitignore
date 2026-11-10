@@ -18,3 +18,8 @@ chaturbate-dvr
 *.local
 *.log
 cookies.txt
+
+# Image detector: downloaded/trained models and the virtual environment
+detector/models/
+detector/.venv/
+__pycache__/
