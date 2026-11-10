@@ -27,9 +27,16 @@ func resolveSite(siteName string) site.Site {
 	}
 }
 
+// ResolveSite returns the site.Site implementation for the given site name.
+func ResolveSite(siteName string) site.Site { return resolveSite(siteName) }
+
 // Monitor starts monitoring the channel for live streams and records them.
 func (ch *Channel) Monitor(runID uint64) {
 	defer ch.finishMonitor()
+
+	// Context of this run, created when the run was started: Pause/Stop cancel
+	// it, and every network call below honours it.
+	ctx := ch.runContext()
 
 	s := resolveSite(ch.Config.Site)
 	req := internal.NewReq()
@@ -39,19 +46,19 @@ func (ch *Channel) Monitor(runID uint64) {
 	go ch.ScanTotalDiskUsage()
 
 	// Seed StreamedAt from the site API if we haven't seen this channel stream yet.
-	if ch.StreamedAt == 0 {
-		if ts, err := s.FetchLastBroadcast(context.Background(), req, ch.Config.Username); err == nil && ts > 0 {
+	ch.stateMu.RLock()
+	needStreamedAt := ch.StreamedAt == 0
+	ch.stateMu.RUnlock()
+	if needStreamedAt {
+		if ts, err := s.FetchLastBroadcast(ctx, req, ch.Config.Username); err == nil && ts > 0 {
+			ch.stateMu.Lock()
 			ch.StreamedAt = ts
 			ch.Config.StreamedAt = ts
+			ch.stateMu.Unlock()
 			_ = server.Manager.SaveConfig()
-			ch.Update()
+			ch.UpdateNow()
 		}
 	}
-
-	// Create a new context with a cancel function,
-	// the CancelFunc will be stored in the channel's CancelFunc field
-	// and will be called by `Pause` or `Stop` functions
-	ctx, _ := ch.WithCancel(context.Background())
 
 	var err error
 	for {
@@ -73,6 +80,14 @@ func (ch *Channel) Monitor(runID uint64) {
 				errors.Is(err, internal.ErrRoomPasswordRequired)
 		}
 		onRetry := func(_ uint, err error) {
+			// The site said the channel is not broadcasting in public (a hidden or
+			// private show cannot be recorded either): it is no longer "available".
+			// Cancellation (pause) and transient errors say nothing about it.
+			if errors.Is(err, internal.ErrChannelOffline) ||
+				errors.Is(err, internal.ErrPrivateStream) ||
+				errors.Is(err, internal.ErrHiddenStream) {
+				ch.setAvailable(false)
+			}
 			ch.UpdateOnlineStatus(false)
 
 			// Reset CF block count whenever a non-CF response is received.
@@ -144,22 +159,13 @@ func (ch *Channel) Monitor(runID uint64) {
 	}
 }
 
-// Update sends an update signal to the channel's update channel.
-// This notifies the Server-sent Event to boradcast the channel information to the client.
-func (ch *Channel) Update() {
-	select {
-	case <-ch.done:
-		return
-	case ch.UpdateCh <- true:
-	}
-}
-
 // RecordStream records the stream of the channel using the provided site and HTTP client.
 // It retrieves the stream information and starts watching the segments.
 func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, req *internal.Req) error {
 	ch.fileMu.Lock()
 	ch.mp4InitSegment = nil
 	ch.fileMu.Unlock()
+	ch.detectClearSegments() // segments of an earlier stream do not belong to the new init segment
 
 	streamInfo, err := s.FetchStream(ctx, req, ch.Config.Username)
 
@@ -168,6 +174,7 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 	changed := false
 	thumbChanged := false
 	if streamInfo != nil {
+		ch.stateMu.Lock()
 		if streamInfo.RoomTitle != "" && streamInfo.RoomTitle != ch.RoomTitle {
 			ch.RoomTitle = streamInfo.RoomTitle
 			ch.Config.RoomTitle = streamInfo.RoomTitle
@@ -184,12 +191,13 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 			changed = true
 			thumbChanged = true
 		}
+		ch.stateMu.Unlock()
 		if changed {
 			_ = server.Manager.SaveConfig()
 			if thumbChanged {
 				ch.UpdateThumb()
 			}
-			ch.Update()
+			ch.UpdateNow()
 		}
 	}
 
@@ -201,17 +209,19 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 		return fmt.Errorf("get stream: %w", internal.ErrChannelOffline)
 	}
 
+	ch.stateMu.Lock()
 	ch.StreamedAt = time.Now().Unix()
 	ch.Config.StreamedAt = ch.StreamedAt
+	ch.NumViewers = streamInfo.NumViewers
+	ch.stateMu.Unlock()
 	_ = server.Manager.SaveConfig()
 	ch.Sequence = 0
-	ch.NumViewers = streamInfo.NumViewers
-	if ch.LiveThumbURL != streamInfo.LiveThumbURL {
-		ch.LiveThumbURL = streamInfo.LiveThumbURL
+	if ch.setLiveThumbURL(streamInfo.LiveThumbURL) {
 		ch.UpdateThumb()
 	}
 
-	playlist, err := chaturbate.FetchPlaylist(ctx, streamInfo.HLSURL, ch.Config.Resolution, ch.Config.Framerate, streamInfo.CDNReferer, streamInfo.MouflonPDKey)
+	set := ch.Settings()
+	playlist, err := chaturbate.FetchPlaylist(ctx, streamInfo.HLSURL, set.Resolution, set.Framerate, streamInfo.CDNReferer, streamInfo.MouflonPDKey)
 	if err != nil {
 		return fmt.Errorf("get playlist: %w", err)
 	}
@@ -237,7 +247,9 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 	// Notify stream online if enabled.
 	if server.Config.NotifyStreamOnline {
 		title := fmt.Sprintf("📡 %s is live!", ch.Config.Username)
+		ch.stateMu.RLock()
 		body := ch.RoomTitle
+		ch.stateMu.RUnlock()
 		if body == "" {
 			body = ch.Config.Username
 		}
@@ -254,7 +266,7 @@ func (ch *Channel) RecordStream(ctx context.Context, runID uint64, s site.Site, 
 			streamType = "LL-HLS (video only)"
 		}
 	}
-	ch.Info("stream type: %s, resolution %dp (target: %dp), framerate %dfps (target: %dfps)", streamType, playlist.Resolution, ch.Config.Resolution, playlist.Framerate, ch.Config.Framerate)
+	ch.Info("stream type: %s, resolution %dp (target: %dp), framerate %dfps (target: %dfps)", streamType, playlist.Resolution, set.Resolution, playlist.Framerate, set.Framerate)
 
 	return playlist.WatchSegments(ctx, func(b []byte, duration float64) error {
 		return ch.handleSegmentForMonitor(runID, b, duration)
@@ -307,6 +319,7 @@ func (ch *Channel) handleSegmentForMonitor(runID uint64, b []byte, duration floa
 
 	ch.Filesize += n
 	ch.Duration += duration
+	ch.detectKeep(b)
 	formattedDuration := internal.FormatDuration(ch.Duration)
 	formattedFilesize := internal.FormatFilesize(ch.Filesize)
 	shouldSwitch := ch.shouldSwitchFileLocked()

@@ -64,6 +64,31 @@ func (cb *Chaturbate) FetchStream(ctx context.Context, req *internal.Req, userna
 	}, nil
 }
 
+// FetchAvailability implements site.AvailabilitySource: one plain request to the
+// room API, with no browser fallback (a Cloudflare block is reported as an
+// error and the caller backs off).
+func (cb *Chaturbate) FetchAvailability(ctx context.Context, req *internal.Req, username string) (site.Availability, error) {
+	apiURL := fmt.Sprintf("%sapi/chatvideocontext/%s/", server.Config.Domain, username)
+	body, err := req.Get(ctx, apiURL)
+	if err != nil {
+		return site.Availability{}, err
+	}
+	// Only a clean JSON answer counts: an error page or the lobby page (what
+	// Chaturbate returns when it is overloaded) must not make a channel that is
+	// on air look offline, so anything else is "could not tell".
+	var resp apiResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		return site.Availability{}, fmt.Errorf("chaturbate: availability answer is not JSON: %w", err)
+	}
+	switch {
+	case resp.HLSSource != "":
+		return site.Availability{Live: true, NumViewers: resp.NumViewers}, nil
+	case resp.RoomStatus != "" || resp.Code != "":
+		return site.Availability{}, nil // offline, private, hidden, password-protected: cannot be recorded
+	}
+	return site.Availability{}, fmt.Errorf("chaturbate: availability answer has no room status")
+}
+
 // FetchLastBroadcast implements site.Site.
 func (cb *Chaturbate) FetchLastBroadcast(ctx context.Context, req *internal.Req, username string) (int64, error) {
 	return FetchLastBroadcast(ctx, req, username)
@@ -620,6 +645,21 @@ func PickPlaylist(masterPlaylist *m3u8.MasterPlaylist, baseURL string, resolutio
 	}, nil
 }
 
+// sleepCtx waits for d, or returns ctx.Err() as soon as ctx is cancelled.
+// The segment watchers use it instead of a bare time.After so that pausing or
+// removing a channel stops the recording loop immediately (the old fixed waits
+// kept it alive for up to ~8 s, during which a Resume could not take effect).
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
 // WatchHandler is a function type that processes video segments.
 type WatchHandler func(b []byte, duration float64) error
 
@@ -759,12 +799,17 @@ func (p *Playlist) watchVideoOnlySegments(ctx context.Context, handler WatchHand
 	var trackBaseTimes map[uint32]uint64
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		resp, err := client.Get(ctx, p.PlaylistURL)
 		if err != nil {
 			if consecutiveErrors++; consecutiveErrors >= 5 {
 				return fmt.Errorf("get playlist: %w", err)
 			}
-			<-time.After(2 * time.Second)
+			if err := sleepCtx(ctx, 2*time.Second); err != nil {
+				return err
+			}
 			continue
 		}
 		pl, _, err := safeDecodeFrom(strings.NewReader(normalizeM3U8(decodeMouflon(resp, p.MouflonPDKey))))
@@ -781,7 +826,9 @@ func (p *Playlist) watchVideoOnlySegments(ctx context.Context, handler WatchHand
 			if consecutiveErrors++; consecutiveErrors >= 5 {
 				return fmt.Errorf("decode from: %w", err)
 			}
-			<-time.After(2 * time.Second)
+			if err := sleepCtx(ctx, 2*time.Second); err != nil {
+				return err
+			}
 			continue
 		}
 		playlist, ok := pl.(*m3u8.MediaPlaylist)
@@ -876,7 +923,9 @@ func (p *Playlist) watchVideoOnlySegments(ctx context.Context, handler WatchHand
 			}
 		}
 
-		<-time.After(1 * time.Second)
+		if err := sleepCtx(ctx, 1*time.Second); err != nil {
+			return err
+		}
 	}
 }
 
@@ -962,13 +1011,18 @@ func (p *Playlist) watchMuxedSegments(ctx context.Context, handler WatchHandler)
 	}
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		// Fetch video playlist
 		videoResp, err := client.Get(ctx, p.PlaylistURL)
 		if err != nil {
 			if consecutiveErrors++; consecutiveErrors >= 5 {
 				return fmt.Errorf("get video playlist: %w", err)
 			}
-			<-time.After(2 * time.Second)
+			if err := sleepCtx(ctx, 2*time.Second); err != nil {
+				return err
+			}
 			continue
 		}
 		vpl, _, err := safeDecodeFrom(strings.NewReader(normalizeM3U8(decodeMouflon(videoResp, p.MouflonPDKey))))
@@ -979,7 +1033,9 @@ func (p *Playlist) watchMuxedSegments(ctx context.Context, handler WatchHandler)
 			if consecutiveErrors++; consecutiveErrors >= 5 {
 				return fmt.Errorf("decode video playlist: %w", err)
 			}
-			<-time.After(2 * time.Second)
+			if err := sleepCtx(ctx, 2*time.Second); err != nil {
+				return err
+			}
 			continue
 		}
 		videoPlaylist, ok := vpl.(*m3u8.MediaPlaylist)
@@ -993,7 +1049,9 @@ func (p *Playlist) watchMuxedSegments(ctx context.Context, handler WatchHandler)
 			if consecutiveErrors++; consecutiveErrors >= 5 {
 				return fmt.Errorf("get audio playlist: %w", err)
 			}
-			<-time.After(2 * time.Second)
+			if err := sleepCtx(ctx, 2*time.Second); err != nil {
+				return err
+			}
 			continue
 		}
 		apl, _, err := safeDecodeFrom(strings.NewReader(normalizeM3U8(decodeMouflon(audioResp, p.MouflonPDKey))))
@@ -1004,7 +1062,9 @@ func (p *Playlist) watchMuxedSegments(ctx context.Context, handler WatchHandler)
 			if consecutiveErrors++; consecutiveErrors >= 5 {
 				return fmt.Errorf("decode audio playlist: %w", err)
 			}
-			<-time.After(2 * time.Second)
+			if err := sleepCtx(ctx, 2*time.Second); err != nil {
+				return err
+			}
 			continue
 		}
 		audioPlaylist, ok := apl.(*m3u8.MediaPlaylist)
@@ -1079,7 +1139,9 @@ func (p *Playlist) watchMuxedSegments(ctx context.Context, handler WatchHandler)
 			initWritten = true
 		}
 		if !initWritten {
-			<-time.After(1 * time.Second)
+			if err := sleepCtx(ctx, 1*time.Second); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -1233,7 +1295,9 @@ func (p *Playlist) watchMuxedSegments(ctx context.Context, handler WatchHandler)
 				}
 			}
 
-			<-time.After(1 * time.Second)
+			if err := sleepCtx(ctx, 1*time.Second); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -1299,7 +1363,9 @@ func (p *Playlist) watchMuxedSegments(ctx context.Context, handler WatchHandler)
 		}
 		if !syncBaseComputed {
 			pendingStripchat = append(pendingStripchat, cyclePending...)
-			<-time.After(1 * time.Second)
+			if err := sleepCtx(ctx, 1*time.Second); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -1344,6 +1410,8 @@ func (p *Playlist) watchMuxedSegments(ctx context.Context, handler WatchHandler)
 		}
 		pendingStripchat = nil
 
-		<-time.After(1 * time.Second)
+		if err := sleepCtx(ctx, 1*time.Second); err != nil {
+			return err
+		}
 	}
 }

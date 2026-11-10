@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -112,7 +113,7 @@ func (h *Req) GetBytes(ctx context.Context, url string) ([]byte, error) {
 		return nil, ErrCloudflareBlocked
 	}
 	// Check for Age Verification
-	if strings.Contains(string(b), "Verify your age") {
+	if bytes.Contains(b, []byte("Verify your age")) {
 		return nil, ErrAgeVerification
 	}
 
@@ -166,7 +167,7 @@ func (h *Req) DoRequest(req *http.Request) (string, error) {
 		return "", ErrCloudflareBlocked
 	}
 	// Check for Age Verification
-	if strings.Contains(string(b), "Verify your age") {
+	if bytes.Contains(b, []byte("Verify your age")) {
 		return "", ErrAgeVerification
 	}
 

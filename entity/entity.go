@@ -26,11 +26,94 @@ type ChannelConfig struct {
 	MaxFilesize int    `json:"max_filesize"`
 	CreatedAt   int64  `json:"created_at"`
 
+	// Record automatically as soon as the channel is seen on the air: a paused channel with this
+	// on is started by the presence engine. Off by default. Unless AutoNoDiskCheck is set it is not
+	// started while the free disk space is below the global threshold (Config.AutoMinFreeGB).
+	AutoRecord      bool `json:"auto_record,omitempty"`
+	AutoNoDiskCheck bool `json:"auto_no_disk_check,omitempty"`
+
+	// Detection of images in the channel (see detect/ and manager/detect.go). nil = off, the default.
+	Detect *DetectConfig `json:"detect,omitempty"`
+
 	// Persisted metadata — populated at runtime and saved so restarts don't lose them.
 	RoomTitle        string `json:"room_title,omitempty"`
 	Gender           string `json:"gender,omitempty"`
 	SummaryCardImage string `json:"summary_card_image,omitempty"`
 	StreamedAt       int64  `json:"streamed_at,omitempty"`
+	// Tags the site gives the room (lower case); filled in from the list of rooms on the air.
+	Tags []string `json:"tags,omitempty"`
+}
+
+// DetectConfig is the image detection of one channel: pictures of the channel go to a detector (a
+// classifier or an object detector, running on this computer or on Google Colab) and what it finds
+// can hold back the recording and/or cut clips. Zero values mean the defaults (see WithDefaults).
+type DetectConfig struct {
+	Enabled  bool     `json:"enabled"`
+	Model    string   `json:"model"`
+	Source   string   `json:"source,omitempty"`    // "thumb" (the preview picture, the default) or "stream" (a frame of what is being recorded)
+	Labels   []string `json:"labels,omitempty"`    // what counts as a match; empty = anything the model finds
+	MinScore float64  `json:"min_score,omitempty"` // 0..1, default 0.6
+	Interval int      `json:"interval,omitempty"`  // seconds between two pictures, default 10
+	Gate     bool     `json:"gate,omitempty"`      // record only while it matches (needs source "thumb")
+	Idle     int      `json:"idle,omitempty"`      // gate: seconds without a match before the recording stops, default 60
+	Clips    bool     `json:"clips,omitempty"`     // cut the parts that match out of each recording
+	Pre      int      `json:"pre,omitempty"`       // clips: seconds kept before the first match, default 5
+	Post     int      `json:"post,omitempty"`      // clips: seconds kept after the last match, default 10
+}
+
+// WithDefaults fills in what was left at zero.
+func (d DetectConfig) WithDefaults() DetectConfig {
+	if d.Source != "stream" {
+		d.Source = "thumb"
+	}
+	if d.MinScore <= 0 {
+		d.MinScore = 0.6
+	}
+	if d.Interval <= 0 {
+		d.Interval = 10
+	}
+	if d.Idle <= 0 {
+		d.Idle = 60
+	}
+	if d.Pre <= 0 {
+		d.Pre = 5
+	}
+	if d.Post <= 0 {
+		d.Post = 10
+	}
+	return d
+}
+
+// DetectInfo is what a card shows about the detection of its channel.
+type DetectInfo struct {
+	On       bool
+	Matching bool   // the last picture matched
+	Label    string // best label of the last picture
+	Error    string // why the last picture could not be checked
+}
+
+// ChannelSettings are the settings of a channel that its settings dialog edits.
+type ChannelSettings struct {
+	Resolution      int
+	Framerate       int
+	Pattern         string
+	MaxDuration     int // minutes, 0 = no limit
+	MaxFilesize     int // MB, 0 = no limit
+	AutoRecord      bool
+	AutoNoDiskCheck bool
+	Detect          DetectConfig // with the defaults filled in
+}
+
+// ChannelPatch is a change to ChannelSettings: only the fields that are set change.
+type ChannelPatch struct {
+	Resolution      *int
+	Framerate       *int
+	Pattern         *string
+	MaxDuration     *int
+	MaxFilesize     *int
+	AutoRecord      *bool
+	AutoNoDiskCheck *bool
+	Detect          *DetectConfig // replaces the whole detection block
 }
 
 func (c *ChannelConfig) Sanitize() {
@@ -45,6 +128,14 @@ func NormalizeSite(site string) string {
 		return "stripchat"
 	}
 	return "chaturbate"
+}
+
+// NormalizeDetectBackend returns "colab" or "local" (the default).
+func NormalizeDetectBackend(b string) string {
+	if strings.ToLower(strings.TrimSpace(b)) == "colab" {
+		return "colab"
+	}
+	return "local"
 }
 
 // NormalizeFinalizeMode returns a supported finalization mode.
@@ -81,8 +172,12 @@ func ChannelID(site, username string) string {
 type ChannelInfo struct {
 	ChannelID        string
 	ViewMode         string
-	IsOnline         bool
+	IsOnline         bool // recording (connected to the stream)
+	IsAvailable      bool // broadcasting right now, whether or not it is being recorded
 	IsPaused         bool
+	Rank             int    // section of the list: 0 recording, 1 on air but not recording, 2 off air but still trying (not paused), 3 off air and paused
+	SectionStart     bool   // first card of its section in the list being rendered (the page puts the section header before it)
+	SortKey          string // lower-case "username site": the order inside a rank
 	Username         string
 	Duration         string
 	Filesize         string
@@ -100,9 +195,16 @@ type ChannelInfo struct {
 	EdgeRegion       string
 	SummaryCardImage string
 	LiveThumbURL     string // live-updating thumbnail; empty = use platform default
-	Site             string // "chaturbate" (default) or "stripchat"
-	SiteDomain       string // pre-computed site URL, e.g. "https://chaturbate.com/" or "https://stripchat.com/"
+	Tags             []string
+	Settings         ChannelSettings // what the settings dialog of the card edits
+	Detect           DetectInfo      // image detection of the channel (On = false: not used)
+	AutoWaiting      bool            // auto-record is on and the channel is on the air, but it is not started: low free disk space
+	Site             string          // "chaturbate" (default) or "stripchat"
+	SiteDomain       string          // pre-computed site URL, e.g. "https://chaturbate.com/" or "https://stripchat.com/"
 }
+
+// Live reports whether the channel is broadcasting (recorded or not).
+func (c *ChannelInfo) Live() bool { return c.IsOnline || c.IsAvailable }
 
 // Config holds the configuration for the application.
 type Config struct {
@@ -151,4 +253,19 @@ type Config struct {
 	NotifyCooldownHours int // hours between repeated alerts of the same type; default 4
 	NotifyStreamOnline  bool
 	StripchatPDKey      string // MOUFLON v2 decryption key; auto-extracted or manual override
+
+	// Detection of the channels on the air (see manager/presence.go).
+	PresenceCampaign string // Chaturbate affiliate (campaign) id for the list of rooms on the air; empty = list not used
+	PresenceListURL  string // advanced: full address of a list of rooms on the air (siren "users_online_endpoint")
+	PresenceInterval int    // seconds between two sweeps of the list; default 60
+
+	// AutoMinFreeGB is the global estimate used by the "record automatically" option of a
+	// channel: it is not started while the recording disk has less than this much free space.
+	AutoMinFreeGB int // default 10
+
+	// Image detection (see detect/): where the detector runs. The per-channel options are in ChannelConfig.Detect.
+	DetectBackend  string // "local" (default) or "colab"
+	DetectLocalURL string // default http://127.0.0.1:8099
+	DetectColabURL string // the https address the Colab notebook prints
+	DetectToken    string // sent to the detector; the Colab one needs it
 }

@@ -208,6 +208,8 @@ _Note: You can paste either a semicolon-separated cookie string, e.g. `key1=valu
 
 On first start, the app creates local placeholder files in `conf/settings.json` and `conf/channels.json` automatically if they do not exist. Those files are intended to stay local and hold your machine-specific settings and cookies. In this repository, `conf/` is gitignored, so your local cookies and channels are not included in normal commits.
 
+**What is sensitive:** everything in `conf/` stays on your machine: cookies, `admin-password`, the ntfy token, the Discord webhook, the browser-helper token, the browser profile (`conf/browser-profile`) and the affiliate ID saved as `presence_campaign`. GoondVR does not read a `.env` file or environment variables (it is configured with command-line flags and `conf/settings.json`), so no `.env.example` is needed; if you add a `.env` for your own tooling it is gitignored, and only a `.env.example` with variable names and empty values should be committed.
+
 The easiest update path in the Web UI is the `Browser Import` box: paste Firefox `Copy as cURL` output for a successful `chatvideocontext` or `biocontext` request, and the app will extract the cookie jar and User-Agent automatically.
 
 Room-specific `tbu_*` cookies are ignored automatically and are not needed for normal Chaturbate recording.
@@ -361,6 +363,12 @@ Pattern: video/{{.Username}}/{{.Year}}-{{.Month}}-{{.Day}}_{{.Hour}}-{{.Minute}}
 ```
 
 _Note: Legacy HLS streams are saved as `.ts`. LL-HLS streams are saved as `.mp4` with muxed video and audio._
+
+# 🛟 Closing the program, crashes and backups
+
+- **Closing the console window** stops every recording within a few seconds (Windows ends the process about 5 s after the window is closed). Slow work such as the ffmpeg conversion is not started then; the recordings are listed in `conf/open-recordings.json` and finished the next time the program starts (the unfinished end is cut off and the seek index is built).
+- **Recordings that were cut short** (power loss, task killed, full disk) are repaired the same way at the next start. Only the incomplete end of a file is removed.
+- **`conf/channels.json` and `conf/settings.json`** are written atomically (a copy is written and swapped in), so a crash cannot leave a half-written file. A backup of each is kept in `conf/backup/` (at start, then every 10 minutes while they change, and when the program closes; the last 30 are kept). If a file is damaged at start, the newest good backup is restored and the damaged file is kept next to it as `*.corrupt-<time>`.
 
 # 🤔 Frequently Asked Questions
 

@@ -102,12 +102,15 @@ func SetupViews(r *gin.Engine) {
 	r.POST("/stop_channel/:channelID", StopChannel)
 	r.POST("/pause_channel/:channelID", PauseChannel)
 	r.POST("/resume_channel/:channelID", ResumeChannel)
+	r.POST("/update_channel/:channelID", UpdateChannel)
 	r.GET("/api/stats", Stats)
+	r.POST("/api/detect/models", DetectModels)
 }
 
 // LoadHTMLFromEmbedFS loads specific HTML templates from an embedded filesystem and registers them with Gin.
 func LoadHTMLFromEmbedFS(r *gin.Engine, embeddedFS embed.FS, files ...string) error {
 	templ := template.New("").Funcs(template.FuncMap{
+		"pct": view.Pct,
 		"setViewMode": func(info any, mode string) any {
 			if v, ok := info.(*entity.ChannelInfo); ok {
 				cp := *v

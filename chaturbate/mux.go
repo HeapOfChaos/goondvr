@@ -517,6 +517,12 @@ type tfdtPatch struct {
 // The scan is streaming: only one moof box is held in memory at a time,
 // so memory usage is O(number of fragments), not O(file size).
 func BuildSeekIndex(path string) error {
+	if err := applySeekJournal(path); err != nil { // a run that was killed half way finishes first
+		return fmt.Errorf("finish interrupted index: %w", err)
+	}
+	if err := RepairMP4Tail(path); err != nil { // an index appended after a torn fragment would corrupt the file
+		return fmt.Errorf("repair tail: %w", err)
+	}
 	f, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
@@ -615,33 +621,32 @@ func BuildSeekIndex(path string) error {
 		minTimes[id] = shift
 	}
 
-	// Pass 2: patch tfdt values in-place using pwrite (no full-file rewrite).
+	// Pass 2: work out the new tfdt values, write them down in a journal next to
+	// the file and only then rewrite them in place (no full-file rewrite). The
+	// journal makes this safe to interrupt: see applySeekJournal.
+	var edits []tfdtEdit
 	for _, p := range patches {
 		minT := minTimes[p.trackID]
 		if minT == 0 {
 			continue
 		}
-		if p.version == 1 {
-			var buf [8]byte
-			if _, err := f.ReadAt(buf[:], p.fileOffset); err != nil {
-				continue
-			}
-			cur := binary.BigEndian.Uint64(buf[:])
-			if cur >= minT {
-				binary.BigEndian.PutUint64(buf[:], cur-minT)
-				f.WriteAt(buf[:], p.fileOffset)
-			}
-		} else {
-			var buf [4]byte
-			if _, err := f.ReadAt(buf[:], p.fileOffset); err != nil {
-				continue
-			}
-			cur := uint64(binary.BigEndian.Uint32(buf[:]))
-			if cur >= minT {
-				binary.BigEndian.PutUint32(buf[:], uint32(cur-minT))
-				f.WriteAt(buf[:], p.fileOffset)
-			}
+		cur, err := readTfdt(f, p.fileOffset, p.version)
+		if err != nil || cur < minT {
+			continue
 		}
+		edits = append(edits, tfdtEdit{Off: p.fileOffset, Ver: p.version, Old: cur, New: cur - minT})
+	}
+	if len(edits) > 0 {
+		if err := writeSeekJournal(path, edits); err != nil {
+			return fmt.Errorf("write journal: %w", err)
+		}
+		if err := applyEdits(f, edits); err != nil {
+			return fmt.Errorf("rewrite times: %w", err)
+		}
+		if err := f.Sync(); err != nil {
+			return fmt.Errorf("sync: %w", err)
+		}
+		_ = os.Remove(seekJournalPath(path))
 	}
 
 	// Adjust collected entry times to match rewritten values.
@@ -662,7 +667,7 @@ func BuildSeekIndex(path string) error {
 	if _, err := f.Write(mfraBox); err != nil {
 		return fmt.Errorf("write mfra: %w", err)
 	}
-	return nil
+	return f.Sync()
 }
 
 func extractTrackTimescales(moovContent []byte, timescales map[uint32]uint64) {

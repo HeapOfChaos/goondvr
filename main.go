@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/HeapOfChaos/goondvr/channel"
 	"github.com/HeapOfChaos/goondvr/config"
 	"github.com/HeapOfChaos/goondvr/entity"
 	"github.com/HeapOfChaos/goondvr/internal"
@@ -27,7 +28,7 @@ const logo = `
 func main() {
 	app := &cli.App{
 		Name:    "goondvr",
-		Version: "4.0.1",
+		Version: "4.0.1-nolag5",
 		Usage:   "Record your favorite streams automatically. 😎🫵",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -220,14 +221,22 @@ func start(c *cli.Context) error {
 		return fmt.Errorf("new manager: %w", err)
 	}
 
-	// Handle SIGINT / SIGTERM so in-progress recordings are cleanly closed and
-	// seek-indexed before the process exits.
+	// Recordings that an earlier run left unfinished (it was killed, or its console
+	// window was closed) are repaired in the background.
+	go channel.RecoverRecordings()
+
+	// Ctrl+C, and on Windows also closing the console window, logging off and
+	// shutting down (Go delivers those as SIGTERM and Windows ends the process
+	// about five seconds later): close every recording and save, in a few seconds.
+	// A second Ctrl+C exits at once.
 	go func() {
-		sigCh := make(chan os.Signal, 1)
+		sigCh := make(chan os.Signal, 2)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
-		fmt.Println("Shutting down, waiting for recordings to close and finalize...")
+		fmt.Println("Closing: stopping the recordings and saving (press Ctrl+C again to exit at once)...")
+		go func() { <-sigCh; os.Exit(1) }()
 		server.Manager.Shutdown()
+		fmt.Println("Closed.")
 		os.Exit(0)
 	}()
 

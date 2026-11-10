@@ -71,15 +71,74 @@
             .collapsed-stat { flex-shrink: 0; white-space: nowrap; }
             .collapsed-actions { flex-shrink: 0; display: flex; gap: 0.4rem; }
 
+            /* Page: the list in the middle, search and filters on the right */
+            #page { display: flex; justify-content: center; align-items: flex-start; gap: 1.25rem; padding: 0 0.5rem; }
+            #main-col { flex: 0 1 990px; min-width: 0; }
+            #side-panel { flex: 0 0 280px; width: 280px; position: sticky; top: var(--topbar-h, 96px); align-self: flex-start;
+                          max-height: calc(100vh - var(--topbar-h, 96px) - 12px); overflow-y: auto; scrollbar-width: thin; margin-top: 2.5rem; }
+            #filters-btn { display: none; }
+            @media (max-width: 1360px) {
+                #page { display: block; padding: 0; }
+                #filters-btn { display: inline-flex; }
+                /* a drawer hanging from the (sticky) top bar; the script moves the panel into the bar on narrow screens */
+                #side-panel { display: none; position: absolute; top: calc(100% + 6px); right: 0; width: min(320px, calc(100vw - 16px));
+                              max-height: 70vh; margin: 0; z-index: 60; box-shadow: 0 8px 28px rgba(0,0,0,0.45); }
+                #side-panel.is-open { display: block; }
+            }
+
+            /* Top bar: sticky, opaque (the colour of the page is copied by the script), never changes height while scrolling */
+            #top-bar { position: sticky; top: 0; z-index: 50; background: var(--page-bg, #1b1b1b); padding: 0.55rem 0 0.5rem; margin-top: 0.5rem;
+                       box-shadow: 0 1px 0 rgba(128,128,128,0.28); }
+            #top-bar .ts-switch { white-space: nowrap; }
+
+            /* Hide every picture (the script also stops downloading them) */
+            html.hide-images .img-switcher, html.hide-images .grid-img-switcher, html.hide-images .collapsed-img-switcher { display: none !important; }
+
+            /* Search / tag filter */
+            .channel-box.is-filtered { display: none !important; }
+            .tag-chip, .card-tag { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0 0.3rem 0.3rem 0; padding: 0.1rem 0.5rem; border-radius: 999px;
+                                   border: 1px solid rgba(128,128,128,0.45); background: transparent; color: inherit; font: inherit; font-size: 0.78rem; line-height: 1.5; cursor: pointer; }
+            .tag-chip:hover, .card-tag:hover { background: rgba(128,128,128,0.18); }
+            .tag-chip.is-on, .card-tag.is-on { background: #2f6fed; border-color: #2f6fed; color: #fff; }
+            .tag-chip .tag-n { opacity: 0.6; font-size: 0.72rem; }
+            .card-tags { margin-top: 0.4rem; }
+            .card-tag { font-size: 0.72rem; padding: 0 0.45rem; }
+
+            /* Buttons of a card: copy link / automatic recording / settings */
+            .card-tools { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+            .ct-btn { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.28rem 0.5rem; border-radius: 6px; border: 1px solid rgba(128,128,128,0.45);
+                      background: transparent; color: inherit; font: inherit; font-size: 0.78rem; line-height: 1; cursor: pointer; }
+            .ct-btn:hover { background: rgba(128,128,128,0.18); }
+            .ct-btn:disabled { opacity: 0.55; cursor: progress; }
+            .ct-btn.is-on { background: #c0392b; border-color: #c0392b; color: #fff; }
+            .ct-btn.is-wait { background: #b7791f; border-color: #b7791f; color: #fff; }
+            .ct-btn .ct-label { display: none; }
+            .view-expanded .ct-btn .ct-label { display: inline; }
+            #cd-error { display: none; margin-top: 0.75rem; color: #c0392b; font-size: 0.85rem; }
+            #cd-error.is-shown { display: block; }
+
+            /* Sections of the list (recording / on air / retrying / paused) */
+            #channels-list > .section-head { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.15rem 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+            #channels-list > .section-head[hidden] { display: none; }
+            #channels-list[data-view="grid"] > .section-head { grid-column: 1 / -1; }
+            .section-head .section-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--section-color, #8b8d98); flex-shrink: 0; }
+            .section-head .section-count { opacity: 0.6; font-weight: 600; }
+            .section-head[data-section="0"] { --section-color: #e5484d; }
+            .section-head[data-section="1"] { --section-color: #30a46c; }
+            .section-head[data-section="2"] { --section-color: #f5a524; }
+            .section-head[data-section="3"] { --section-color: #8b8d98; }
+
             /* View toggle active state */
             .view-toggle-btn.is-active { background: var(--ts-gray-800) !important; color: var(--ts-white) !important; }
         </style>
     </head>
 
     <body hx-ext="sse">
+        <div id="page">
+        <div id="main-col">
         <!-- Main Section -->
         <div class="ts-container has-vertically-padded-big" style="--width: 990px">
-            <!-- Header -->
+            <!-- Title -->
             <div class="ts-grid is-bottom-aligned">
                 <div class="column is-fluid">
                     <div class="ts-header is-huge is-uppercased is-heavy has-leading-small">GoondVR</div>
@@ -89,8 +148,12 @@
                         </div>
                     </div>
                 </div>
-                <div class="column">
-                    <!-- View Toggle -->
+            </div>
+            <!-- / Title -->
+
+            <!-- Top bar: always visible, also while scrolling -->
+            <div id="top-bar">
+                <div class="ts-wrap is-middle-aligned is-compact" style="gap: 0.5rem 0.75rem">
                     <div class="ts-button-group is-small">
                         <button id="view-btn-expanded" class="ts-button view-toggle-btn is-outlined" onclick="setView('expanded')" title="Expanded view">
                             <span class="ts-icon is-table-columns-icon"></span>
@@ -102,24 +165,25 @@
                             <span class="ts-icon is-bars-icon"></span>
                         </button>
                     </div>
-                </div>
-                <div class="column">
+                    <label class="ts-switch is-small" title="Hide the pictures of every channel (nothing is downloaded while they are hidden)">
+                        <input type="checkbox" id="hide-images-switch" />
+                        Hide images
+                    </label>
+                    <div style="flex: 1"></div>
+                    <button id="filters-btn" class="ts-button is-small is-start-icon is-outlined" type="button" title="Search and filter channels">
+                        <span class="ts-icon is-filter-icon"></span>
+                        Filters<span id="filters-badge" class="ts-badge is-small is-start-spaced" style="display:none"></span>
+                    </button>
                     <button class="ts-button is-start-icon is-outlined" data-dialog="settings-dialog">
                         <span class="ts-icon is-gear-icon"></span>
                         Settings
                     </button>
-                </div>
-                <div class="column">
                     <button class="ts-button is-start-icon" data-dialog="create-dialog">
                         <span class="ts-icon is-plus-icon"></span>
                         Add Channel
                     </button>
                 </div>
-            </div>
-            <!-- / Header -->
-
-            <!-- Stats Bar -->
-            <div id="stats-bar" class="ts-meta has-top-spaced" style="display:none; flex-wrap:wrap; gap: 0 1.2rem; align-items: center;">
+            <div id="stats-bar" class="ts-meta has-top-spaced-small" style="display:none; flex-wrap:wrap; gap: 0 1.2rem; align-items: center;">
                 <div class="item" id="stat-disk-item" style="display:none; align-items: center; gap: 0.3rem;">
                     <span class="ts-icon is-hard-drive-icon"></span>
                     <span id="stat-disk" class="ts-text is-description is-bold"></span>
@@ -136,8 +200,16 @@
                     <span id="stat-rec-dot" style="display:inline-block; width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.35); margin-right:0.35rem; vertical-align:middle;"></span>
                     <span id="stat-recording" class="ts-text is-description is-bold"></span>
                 </div>
+                <div class="item" id="stat-presence-item" style="display:none; align-items: center; gap: 0.3rem;" title="How the app knows which channels are on the air (works with this page closed)">
+                    <span class="ts-icon is-tower-broadcast-icon"></span>
+                    <span id="stat-presence" class="ts-text is-description is-bold"></span>
+                </div>
             </div>
-            <!-- / Stats Bar -->
+            
+            </div>
+            <!-- / Top bar -->
+
+
 
             {{ if not .Channels }}
             <!-- Blankslate -->
@@ -159,7 +231,8 @@
             <!-- Channels -->
             <div id="channels-list" class="ts-wrap is-vertical has-top-spaced-large" sse-connect="/updates?stream=updates">
                 {{ range .Channels }}
-                <div class="channel-box ts-box is-horizontal">
+                {{ if .SectionStart }}<div class="section-head" data-section="{{ .Rank }}"><span class="section-dot"></span><span class="section-title">{{ if eq .Rank 0 }}Recording{{ else if eq .Rank 1 }}On air · not recording{{ else if eq .Rank 2 }}Offline · still trying{{ else }}Offline · paused{{ end }}</span><span class="section-count"></span></div>{{ end }}
+                <div class="channel-box ts-box is-horizontal" data-rank="{{ .Rank }}" data-sort="{{ .SortKey }}">
                     <!-- Info Section -->
                     <div class="channel-info ts-content is-padded has-break-all" style="width: 400px; line-height: 1.45; padding-right: 0">
                         <div sse-swap="{{ .ChannelID }}-thumb">
@@ -195,6 +268,44 @@
             {{ end }}
         </div>
         <!-- / Main Section -->
+        </div>
+        <!-- Search and filters (right side; a drawer on narrow screens) -->
+        <aside id="side-panel" aria-label="Search and filters">
+            <div class="ts-content is-padded is-secondary" style="border-radius: 6px">
+                <div class="ts-input is-start-icon is-fluid">
+                    <span class="ts-icon is-magnifying-glass-icon"></span>
+                    <input id="search-input" type="search" placeholder="Search channels or tags…" autocomplete="off" spellcheck="false" />
+                </div>
+                <div id="search-summary" class="ts-text is-description is-small has-top-spaced-small"></div>
+                <label class="ts-checkbox is-small has-top-spaced-small">
+                    <input type="checkbox" id="only-air" />
+                    On air or recording only
+                </label>
+
+                <div class="ts-divider has-vertically-spaced"></div>
+
+                <div class="ts-grid is-middle-aligned">
+                    <div class="column is-fluid"><span class="ts-text is-bold is-small is-uppercased">Tags</span></div>
+                    <div class="column">
+                        <div class="ts-button-group is-small is-segmented" id="tag-mode" title="A channel must have all of the selected tags, or any of them">
+                            <button type="button" class="ts-button is-small is-start-icon is-active" data-mode="all">All</button>
+                            <button type="button" class="ts-button is-small is-outlined" data-mode="any">Any</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="ts-input is-small has-top-spaced-small">
+                    <input id="tag-search" type="search" placeholder="Filter tags…" autocomplete="off" spellcheck="false" />
+                </div>
+                <div id="tag-list" class="has-top-spaced-small"></div>
+                <div id="tag-empty" class="ts-text is-description is-small has-top-spaced-small" style="display:none">No tags yet: they appear once a channel has been seen on the air.</div>
+
+                <div class="ts-divider has-vertically-spaced"></div>
+                <button id="filters-clear" type="button" class="ts-button is-small is-outlined is-fluid">Clear search and filters</button>
+            </div>
+        </aside>
+        </div>
+        <!-- / Page -->
+
 
         <!-- Settings Dialog -->
         <dialog id="settings-dialog" class="ts-modal" style="--width: 680px">
@@ -315,6 +426,151 @@
                             </div>
                         </div>
                         <!-- / Browser Fetch -->
+
+                        <!-- Detection of the channels on the air -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">On-air detection</div>
+                            <div class="content">
+                                <div class="ts-content is-padded is-secondary">
+                                    <div class="ts-grid is-relaxed is-2-columns">
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Chaturbate affiliate ID</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="text" name="presence_campaign" value="{{ .Config.PresenceCampaign }}" placeholder="your campaign / wm id" />
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Check every</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="presence_interval" value="{{ if .Config.PresenceInterval }}{{ .Config.PresenceInterval }}{{ end }}" placeholder="60" min="20" max="3600" />
+                                                <span class="label">sec</span>
+                                            </div>
+                                        </div>
+                                        <div class="column" style="grid-column: 1 / -1">
+                                            <div class="ts-text is-bold">Custom list address (advanced)</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="text" name="presence_list_url" value="{{ .Config.PresenceListURL }}" placeholder="https://… (a siren users_online_endpoint)" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="ts-text is-description has-top-spaced">The app always knows which channels are on the air, even with this page closed. Main method: one request to the list of rooms on the air (like <a class="ts-text is-link" href="https://github.com/bcmk/siren" target="_blank">siren</a>), which needs your free Chaturbate affiliate ID. Without it, or if it fails, a backup method asks about each paused channel, a few at a time.</div>
+                                    <div id="presence-status" class="ts-text is-description has-top-spaced-small"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / Detection of the channels on the air -->
+
+                        <!-- Defaults of new channels -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">New channel defaults</div>
+                            <div class="content">
+                                <div class="ts-content is-padded is-secondary">
+                                    <div class="ts-grid is-relaxed is-2-columns">
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Resolution</div>
+                                            <div class="ts-select has-top-spaced-small">
+                                                <select name="default_resolution">
+                                                    <option value="2160" {{ if eq .Config.Resolution 2160 }}selected{{ end }}>4K</option>
+                                                    <option value="1440" {{ if eq .Config.Resolution 1440 }}selected{{ end }}>2K</option>
+                                                    <option value="1080" {{ if eq .Config.Resolution 1080 }}selected{{ end }}>1080p</option>
+                                                    <option value="720" {{ if eq .Config.Resolution 720 }}selected{{ end }}>720p</option>
+                                                    <option value="540" {{ if eq .Config.Resolution 540 }}selected{{ end }}>540p</option>
+                                                    <option value="480" {{ if eq .Config.Resolution 480 }}selected{{ end }}>480p</option>
+                                                    <option value="240" {{ if eq .Config.Resolution 240 }}selected{{ end }}>240p</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Framerate</div>
+                                            <div class="ts-select has-top-spaced-small">
+                                                <select name="default_framerate">
+                                                    <option value="60" {{ if eq .Config.Framerate 60 }}selected{{ end }}>60 FPS (or lower)</option>
+                                                    <option value="30" {{ if eq .Config.Framerate 30 }}selected{{ end }}>30 FPS</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="column" style="grid-column: 1 / -1">
+                                            <div class="ts-text is-bold">Filename pattern</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="text" name="default_pattern" value="{{ .Config.Pattern }}" />
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Max filesize</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="default_max_filesize" value="{{ .Config.MaxFilesize }}" min="0" />
+                                                <span class="label">MB</span>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Max duration</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="default_max_duration" value="{{ .Config.MaxDuration }}" min="0" />
+                                                <span class="label">Min(s)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="ts-text is-description has-top-spaced">Every channel you add from now on starts with these values (the Add Channel form is filled in with them). Each channel can change them afterwards with the gear button on its card.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / Defaults of new channels -->
+
+                        <!-- Automatic recording -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Automatic recording</div>
+                            <div class="content">
+                                <div class="ts-content is-padded is-secondary">
+                                    <div class="ts-text is-bold">Keep at least this much free disk space</div>
+                                    <div class="ts-input is-end-labeled has-top-spaced-small" style="max-width: 16rem">
+                                        <input type="number" name="auto_min_free_gb" value="{{ .Config.AutoMinFreeGB }}" min="1" />
+                                        <span class="label">GB</span>
+                                    </div>
+                                    <div class="ts-text is-description has-top-spaced">Channels with "record automatically" turned on (button on each card; off by default) start recording by themselves when they go on the air. With the disk check enabled for a channel, it does not start while the recording disk has less free space than this.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / Automatic recording -->
+
+                        <!-- Image detection -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Image detection</div>
+                            <div class="content">
+                                <div class="ts-content is-padded is-secondary">
+                                    <div class="ts-text is-bold">Where the detector runs</div>
+                                    <div class="ts-wrap is-compact is-vertical has-top-spaced-small">
+                                        <label class="ts-radio"><input type="radio" name="detect_backend" value="local" {{ if ne .Config.DetectBackend "colab" }}checked{{ end }} /> On this computer (CPU, or the GPU if it is faster)</label>
+                                        <label class="ts-radio"><input type="radio" name="detect_backend" value="colab" {{ if eq .Config.DetectBackend "colab" }}checked{{ end }} /> On Google Colab</label>
+                                    </div>
+                                    <div class="ts-grid is-relaxed is-2-columns has-top-spaced">
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Address on this computer</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="text" name="detect_local_url" value="{{ .Config.DetectLocalURL }}" placeholder="http://127.0.0.1:8099" />
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Address of the Colab notebook</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="text" name="detect_colab_url" value="{{ .Config.DetectColabURL }}" placeholder="https://….trycloudflare.com" />
+                                            </div>
+                                        </div>
+                                        <div class="column" style="grid-column: 1 / -1">
+                                            <div class="ts-text is-bold">Token</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="password" name="detect_token" value="{{ .Config.DetectToken }}" placeholder="the one the detector (or the notebook) prints" autocomplete="off" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="ts-wrap has-top-spaced">
+                                        <button type="button" id="detect-test" class="ts-button is-outlined is-secondary">Test connection</button>
+                                    </div>
+                                    <div id="detect-test-result" class="ts-text is-description has-top-spaced-small"></div>
+                                    <div class="ts-text is-description has-top-spaced">Off for every channel until you turn it on in its own settings (gear button). The detector is a small separate program (folder <code>detector</code>, see <code>docs/GUIA_DETECCION.md</code>). It looks at pictures of the channels you choose and can hold the recording back until something you trained it for shows up, and cut clips of those moments. With Colab, the pictures travel to Google's servers.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / Image detection -->
 
                         <!-- Completed Directory -->
                         <div class="ts-control is-wide has-top-spaced-large">
@@ -654,72 +910,516 @@
         </dialog>
         <!-- / Create Dialog -->
 
+        <!-- Channel settings dialog (one for all the cards; filled in from the button that opened it) -->
+        <dialog id="channel-dialog" class="ts-modal" style="--width: 680px">
+            <div class="content">
+                <form id="channel-form" autocomplete="off">
+                    <div class="ts-content is-horizontally-padded is-secondary">
+                        <div class="ts-grid">
+                            <div class="column is-fluid">
+                                <div class="ts-header">Channel settings</div>
+                                <div id="cd-who" class="ts-text is-description is-small"></div>
+                            </div>
+                            <div class="column">
+                                <button type="button" class="ts-close is-rounded is-large is-secondary" data-cd-close></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ts-divider"></div>
+
+                    <div class="ts-content is-vertically-padded">
+                        <div class="ts-control is-wide">
+                            <div class="label">Resolution</div>
+                            <div class="content">
+                                <div class="ts-select">
+                                    <select name="resolution" id="cd-resolution">
+                                        <option value="2160">4K</option>
+                                        <option value="1440">2K</option>
+                                        <option value="1080">1080p</option>
+                                        <option value="720">720p</option>
+                                        <option value="540">540p</option>
+                                        <option value="480">480p</option>
+                                        <option value="240">240p</option>
+                                    </select>
+                                </div>
+                                <div class="ts-text is-description has-top-spaced-small">The lower resolution will be used if the selected resolution is not available. It applies to the next stream.</div>
+                            </div>
+                        </div>
+
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Framerate</div>
+                            <div class="content is-padded">
+                                <div class="ts-wrap is-compact is-vertical">
+                                    <label class="ts-radio"><input type="radio" name="framerate" value="60" /> 60 FPS (or lower)</label>
+                                    <label class="ts-radio"><input type="radio" name="framerate" value="30" /> 30 FPS</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Filename Pattern</div>
+                            <div class="content">
+                                <div class="ts-input"><input type="text" name="pattern" id="cd-pattern" /></div>
+                                <div class="ts-text is-description has-top-spaced-small">Used for the next file of this channel.</div>
+                            </div>
+                        </div>
+
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Splitting Options</div>
+                            <div class="content">
+                                <div class="ts-content is-padded is-secondary">
+                                    <div class="ts-grid is-relaxed is-2-columns">
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Max Filesize</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="max_filesize" id="cd-max-size" min="0" />
+                                                <span class="label">MB</span>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Max Duration</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" name="max_duration" id="cd-max-dur" min="0" />
+                                                <span class="label">Min(s)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="ts-text is-description has-top-spaced">Splitting will be disabled if both options are 0.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ts-divider has-vertically-spaced-large"></div>
+
+                        <div class="ts-control is-wide">
+                            <div class="label">Automatic recording</div>
+                            <div class="content">
+                                <label class="ts-switch">
+                                    <input type="checkbox" id="cd-auto" />
+                                    Record this channel by itself when it goes live
+                                </label>
+                                <div class="ts-text is-description has-top-spaced-small">Off by default. While it is on, the channel waits paused and starts as soon as it is seen on the air; it waits paused again after the broadcast.</div>
+                                <label class="ts-checkbox has-top-spaced">
+                                    <input type="checkbox" id="cd-disk" />
+                                    Only if at least <strong>{{ .Config.AutoMinFreeGB }} GB</strong> are free on the recording disk
+                                </label>
+                                <div class="ts-text is-description has-top-spaced-small">The limit is the same for every channel (Settings &rarr; Automatic recording).</div>
+                            </div>
+                        </div>
+                        <div class="ts-divider has-vertically-spaced-large"></div>
+
+                        <div class="ts-control is-wide">
+                            <div class="label">Image detection</div>
+                            <div class="content">
+                                <label class="ts-switch">
+                                    <input type="checkbox" id="cd-det-on" />
+                                    Look at this channel's pictures with the detector
+                                </label>
+                                <div id="cd-det-body" class="has-top-spaced-small" hidden>
+                                    <div class="ts-text is-bold">Model</div>
+                                    <div class="ts-input has-top-spaced-small">
+                                        <input type="text" id="cd-det-model" list="cd-det-models" placeholder="name of the model" autocomplete="off" />
+                                        <datalist id="cd-det-models"></datalist>
+                                    </div>
+                                    <div id="cd-det-modelinfo" class="ts-text is-description has-top-spaced-small"></div>
+
+                                    <div class="ts-grid is-relaxed is-2-columns has-top-spaced">
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Picture from</div>
+                                            <div class="ts-select has-top-spaced-small">
+                                                <select id="cd-det-source">
+                                                    <option value="thumb">The preview picture</option>
+                                                    <option value="stream">The recording (needs ffmpeg)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">Check every</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" id="cd-det-interval" min="2" max="3600" />
+                                                <span class="label">sec</span>
+                                            </div>
+                                        </div>
+                                        <div class="column" style="grid-column: 1 / -1">
+                                            <div class="ts-text is-bold">It counts when it finds</div>
+                                            <div class="ts-input has-top-spaced-small">
+                                                <input type="text" id="cd-det-labels" placeholder="labels separated by commas; empty = anything the model knows" />
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-text is-bold">With at least</div>
+                                            <div class="ts-input is-end-labeled has-top-spaced-small">
+                                                <input type="number" id="cd-det-min" min="1" max="100" />
+                                                <span class="label">%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <label class="ts-checkbox has-top-spaced">
+                                        <input type="checkbox" id="cd-det-gate" />
+                                        Record only while it matches
+                                    </label>
+                                    <div class="ts-grid is-relaxed is-2-columns has-top-spaced-small">
+                                        <div class="column">
+                                            <div class="ts-input is-end-labeled">
+                                                <input type="number" id="cd-det-idle" min="5" max="86400" />
+                                                <span class="label">sec</span>
+                                            </div>
+                                        </div>
+                                        <div class="column"><div class="ts-text is-description">without a match and it stops (it starts again at the next match; the preview picture is needed)</div></div>
+                                    </div>
+
+                                    <label class="ts-checkbox has-top-spaced">
+                                        <input type="checkbox" id="cd-det-clips" />
+                                        Cut clips of the matches when the recording is finished
+                                    </label>
+                                    <div class="ts-grid is-relaxed is-2-columns has-top-spaced-small">
+                                        <div class="column">
+                                            <div class="ts-input is-end-labeled"><input type="number" id="cd-det-pre" min="0" max="300" /><span class="label">sec before</span></div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="ts-input is-end-labeled"><input type="number" id="cd-det-post" min="0" max="300" /><span class="label">sec after</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="ts-text is-description has-top-spaced-small">The clips are copies cut from the recording (no re-encoding, so they start at the nearest key frame) saved next to it. The list of matches is saved as <code>.detect.json</code>.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="cd-error" role="alert"></div>
+                    </div>
+
+                    <div class="ts-divider"></div>
+
+                    <div class="ts-content is-secondary is-horizontally-padded">
+                        <div class="ts-wrap is-end-aligned">
+                            <button type="button" class="ts-button is-outlined is-secondary" data-cd-close>Cancel</button>
+                            <button type="submit" id="cd-save" class="ts-button is-primary">Save</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+        <!-- / Channel settings dialog -->
+
         <script>
             const LIVE_THUMB_URL = (username, site, channelID) => {
                 if (site === 'stripchat') return `/live-thumb/${encodeURIComponent(channelID)}`;
                 return `https://thumb.live.mmcdn.com/riw/${username}.jpg`;
             };
-            const CARD_THUMB_URL = channelID => `/thumb/${encodeURIComponent(channelID)}`;
-            const LIVE_THUMB_CACHE_BUCKET_MS = 60 * 1000;
+            // The version changes when the channel's profile picture changes, so the
+            // browser never keeps showing an old one from its cache.
+            const CARD_THUMB_URL = (channelID, version) =>
+                `/thumb/${encodeURIComponent(channelID)}?v=${hashString(version || '')}`;
 
-            // Stores the last successfully loaded live URL per username.
-            // SSE re-inits reuse this so they don't fire a new network request.
-            const liveThumbCache = {};
+            // Live previews. Only cards that are on screen are renewed (a dashboard
+            // with many channels would otherwise download and decode dozens of images
+            // nobody can see), each at its own moment so they do not all load at
+            // once, a few at a time, and a failed or hung image is retried later
+            // while the previous picture stays on screen.
+            const LIVE_FOCUS_MS = 10 * 1000;            // online channel whose card is really on screen: what you are looking at
+            const LIVE_REFRESH_MS = 30 * 1000;          // online channel whose card is only near the screen
+            const THUMB_MAX_RATE = 2;                   // images per second for all the cards together: with many cards on
+                                                        // screen each one is renewed less often, so the load stays bounded
+            const OFFLINE_REFRESH_MS = 5 * 60 * 1000;   // channel that is not: its picture hardly changes
+            const LIVE_RETRY_MS = [5000, 10000, 20000, 40000]; // after a failed load
+            const THUMB_TIMEOUT_MS = 15000;             // one image may take this long
+            const THUMB_PARALLEL = 4;                   // images loading at the same time
 
-            function setThumb(el, newSrc) {
-                const layers = el.querySelectorAll('.thumb-layer');
-                if (layers.length < 2) return;
-                const activeIdx = parseInt(el.dataset.activeLayer || '0');
-                const nextIdx = 1 - activeIdx;
-                const preloader = new Image();
-                preloader.src = newSrc;
-                const ready = preloader.decode
-                    ? preloader.decode()
-                    : new Promise(r => { preloader.onload = r; preloader.onerror = r; });
-                ready.then(() => {
-                    layers[nextIdx].style.backgroundImage = `url("${newSrc}")`;
-                    requestAnimationFrame(() => {
-                        layers[nextIdx].style.opacity = '1';
-                        layers[activeIdx].style.opacity = '0';
-                        el.dataset.activeLayer = String(nextIdx);
-                    });
-                }).catch(() => {});
+            function hashString(s) {
+                let h = 5381;
+                for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+                return (h >>> 0).toString(36);
             }
 
-            // refresh=true always fetches a new timestamped live URL.
-            // refresh=false (SSE re-init) reuses the cached URL to avoid hammering the CDN.
-            function applyThumbMode(switcher, mode, refresh) {
-                const username = switcher.dataset.username;
-                const channelID = switcher.dataset.channelId;
-                const site = switcher.dataset.site || 'chaturbate';
+            // Connection to the event stream (used by the htmx SSE extension).
+            // The first connection of this page needs nothing special: the page was
+            // just rendered. When htmx has to create the connection again (after an
+            // error) it asks the server for the current state of every channel with
+            // ?resync=1, because events published meanwhile were not received. (The
+            // browser's own automatic reconnect is recognised by the server through
+            // the Last-Event-ID header.)
+            let sseConnections = 0;
+            htmx.createEventSource = function (url) {
+                const again = sseConnections++ > 0;
+                const target = again ? url + (url.indexOf('?') >= 0 ? '&' : '?') + 'resync=1' : url;
+                return new EventSource(target, { withCredentials: true });
+            };
+
+            // View currently on screen. Every channel is rendered three times
+            // (expanded / grid / collapsed) but only one copy is ever visible, so
+            // thumbnails, marquees and logs are only maintained for that one.
+            // setView() catches the others up when they become visible.
+            let currentView = 'expanded';
+
+            function readStored(key) {
+                try { return localStorage.getItem(key); } catch (e) { return null; }
+            }
+            function writeStored(key, value) {
+                try { localStorage.setItem(key, value); } catch (e) { /* storage unavailable */ }
+            }
+
+            // Thumbnail switchers of the visible view, optionally limited to the
+            // part of the page that was just redrawn (`scope`).
+            function activeSwitchers(scope) {
+                return (scope || document).querySelectorAll('.view-' + currentView + ' .img-switcher');
+            }
+
+            function savedThumbMode(switcher) {
+                const isLive = switcher.dataset.isLive.trim() === 'true';
                 const hasCard = switcher.dataset.hasCard === '1';
+                const defaultMode = isLive ? 'live' : (hasCard ? 'card' : 'live');
+                return readStored('dvr-thumb-' + switcher.dataset.channelId) || defaultMode;
+            }
+
+            // The mode a card really shows: a profile picture is only possible when there is one.
+            function effectiveThumbMode(switcher) {
+                const mode = savedThumbMode(switcher);
+                return (mode === 'card' && switcher.dataset.hasCard !== '1') ? 'live' : mode;
+            }
+
+            // What is known about the previews of each channel. The cards are redrawn
+            // by the event stream (new elements), so it is kept outside the DOM.
+            const thumbState = new Map();
+            function thumbInfo(channelID) {
+                let st = thumbState.get(channelID);
+                if (!st) {
+                    st = { live: '', loadedAt: 0, failAt: 0, loading: false, fails: 0, isLive: null,
+                           card: { url: '', ok: false, loading: false, fails: 0, retryAt: 0 } };
+                    thumbState.set(channelID, st);
+                }
+                return st;
+            }
+
+            // Downloads and decodes an image. Rejects when it fails or takes too long;
+            // the picture on screen is only replaced once the new one is ready.
+            function loadImage(src) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    let done = false;
+                    const finish = ok => {
+                        if (done) return;
+                        done = true;
+                        clearTimeout(timer);
+                        img.onload = img.onerror = null;
+                        if (!ok) { reject(new Error('thumbnail failed')); return; }
+                        (img.decode ? img.decode() : Promise.resolve()).then(resolve, () => reject(new Error('thumbnail undecodable')));
+                    };
+                    const timer = setTimeout(() => { img.src = ''; finish(false); }, THUMB_TIMEOUT_MS);
+                    img.onload = () => finish(true);
+                    img.onerror = () => finish(false);
+                    img.src = src;
+                });
+            }
+
+            // At most THUMB_PARALLEL images load at once; the rest wait their turn.
+            const THUMB_STALE = new Error('thumbnail no longer wanted');
+            const thumbQueue = [];
+            let thumbActive = 0;
+            // The newest request goes first (the card that was scrolled into view last is the
+            // one most likely still on screen) and a request whose card has left the
+            // screen while it waited is dropped without downloading anything.
+            function enqueueThumbLoad(src, channelID) {
+                return new Promise((resolve, reject) => {
+                    thumbQueue.push({ src, channelID, resolve, reject });
+                    pumpThumbQueue();
+                });
+            }
+            function thumbStillWanted(channelID) {
+                if (!channelID || !thumbObserver) return true;
+                for (const s of visibleSwitchers) if (s.dataset.channelId === channelID && s.isConnected) return true;
+                return false;
+            }
+            // "Hide images": nothing is downloaded while it is on (the pictures themselves are hidden by CSS).
+            let imagesHidden = readStored('dvr-hide-images') === '1';
+            if (imagesHidden) document.documentElement.classList.add('hide-images');
+            function pumpThumbQueue() {
+                if (imagesHidden) { while (thumbQueue.length) thumbQueue.pop().reject(THUMB_STALE); return; }
+                while (thumbActive < THUMB_PARALLEL && thumbQueue.length) {
+                    const job = thumbQueue.pop();
+                    if (!thumbStillWanted(job.channelID)) { job.reject(THUMB_STALE); continue; }
+                    thumbActive++;
+                    loadImage(job.src).then(job.resolve, job.reject).then(() => {
+                        thumbActive--;
+                        pumpThumbQueue();
+                    });
+                }
+            }
+
+            // Puts an already loaded image on a card: the hidden layer is filled and swapped in.
+            function showThumb(el, src) {
+                if (el.dataset.src === src) return;
+                const layers = el.querySelectorAll('.thumb-layer');
+                if (layers.length < 2) return;
+                const active = parseInt(el.dataset.activeLayer || '0');
+                const next = 1 - active;
+                layers[next].style.backgroundImage = `url("${src}")`;
+                layers[next].style.opacity = '1';
+                layers[active].style.opacity = '0';
+                el.dataset.activeLayer = String(next);
+                el.dataset.src = src;
+            }
+
+            // Shows what is already known for a card, without touching the network.
+            // A redrawn card gets its last picture back immediately instead of
+            // staying blank until the next download.
+            function paintThumb(switcher) {
                 const el = switcher.querySelector('.channel-thumb-img');
                 if (!el) return;
-                const effectiveMode = (mode === 'card' && !hasCard) ? 'live' : mode;
-                let src;
-                if (effectiveMode === 'live') {
-                    if (!refresh && liveThumbCache[channelID]) {
-                        src = liveThumbCache[channelID];
-                    } else {
-                        const cacheBucket = Math.floor(Date.now() / LIVE_THUMB_CACHE_BUCKET_MS);
-                        src = LIVE_THUMB_URL(username, site, channelID) + '?' + cacheBucket;
-                        liveThumbCache[channelID] = src;
-                    }
-                } else {
-                    src = CARD_THUMB_URL(channelID);
-                }
-                setThumb(el, src);
+                const mode = effectiveThumbMode(switcher);
                 switcher.querySelectorAll('.img-sw-btn').forEach(btn => {
-                    btn.classList.toggle('is-active', btn.dataset.mode === effectiveMode);
+                    btn.classList.toggle('is-active', btn.dataset.mode === mode);
                 });
+                const channelID = switcher.dataset.channelId;
+                const st = thumbInfo(channelID);
+                if (mode === 'live') {
+                    if (st.live) showThumb(el, st.live);
+                } else {
+                    const url = CARD_THUMB_URL(channelID, switcher.dataset.cardVer);
+                    if (st.card.ok && st.card.url === url) showThumb(el, url);
+                }
+            }
+
+            function repaintChannel(channelID) {
+                document.querySelectorAll('.view-' + currentView + ' .img-switcher[data-channel-id="' + CSS.escape(channelID) + '"]')
+                    .forEach(paintThumb);
+            }
+
+            // Spreads the cards over a few seconds so that they do not all refresh
+            // together. (Names that differ in one character must land far apart, so
+            // the hash is scrambled.)
+            function thumbJitter(channelID, span) {
+                let h = parseInt(hashString(channelID), 36) | 0;
+                h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
+                h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
+                h ^= h >>> 16;
+                return (h >>> 0) % span;
+            }
+
+            // How often the picture of a card is renewed: the cards that are really on
+            // screen often (every LIVE_FOCUS_MS, or less often when there are so many that
+            // the total would exceed THUMB_MAX_RATE), the ones that are only near the
+            // screen less often, and offline channels rarely.
+            let focusInterval = LIVE_FOCUS_MS;
+            function thumbInterval(switcher, isLive) {
+                if (!isLive) return OFFLINE_REFRESH_MS;
+                return focusSwitchers.has(switcher) ? focusInterval : LIVE_REFRESH_MS;
+            }
+
+            // Forget when the picture was loaded: it is renewed again on the next tick.
+            function thumbDueNow(st) { st.loadedAt = 0; st.failAt = 0; st.fails = 0; }
+
+            // Starts downloading a newer picture for the card if one is due.
+            function ensureThumb(switcher, now) {
+                if (imagesHidden) return;
+                const channelID = switcher.dataset.channelId;
+                const st = thumbInfo(channelID);
+                if (effectiveThumbMode(switcher) === 'live') {
+                    if (st.loading) return;
+                    const isLive = switcher.dataset.isLive.trim() === 'true';
+                    const interval = thumbInterval(switcher, isLive);
+                    const due = st.fails
+                        ? st.failAt + (isLive ? LIVE_RETRY_MS[Math.min(st.fails, LIVE_RETRY_MS.length) - 1] : OFFLINE_REFRESH_MS)
+                        : st.loadedAt + interval + thumbJitter(channelID, Math.max(500, interval >> 3));
+                    if (now < due) return;
+                    st.loading = true;
+                    // A new address every refresh (the CDN keeps the picture for a while
+                    // per address); `r` changes after a failure so a bad answer is not reused.
+                    const src = LIVE_THUMB_URL(switcher.dataset.username, switcher.dataset.site || 'chaturbate', channelID)
+                        + '?' + Math.floor(now / 5000) + (st.fails ? '&r=' + st.fails : '');
+                    enqueueThumbLoad(src, channelID).then(() => {
+                        st.live = src;
+                        st.fails = 0;
+                        st.loadedAt = Date.now();
+                        repaintChannel(channelID);
+                    }, err => {
+                        if (err === THUMB_STALE) return; // it left the screen while it waited: not a failure
+                        st.fails++;
+                        st.failAt = Date.now();
+                    }).then(() => { st.loading = false; });
+                } else {
+                    const url = CARD_THUMB_URL(channelID, switcher.dataset.cardVer);
+                    const c = st.card;
+                    if (c.url !== url) { c.url = url; c.ok = false; c.loading = false; c.fails = 0; c.retryAt = 0; }
+                    if (c.ok || c.loading || now < c.retryAt) return;
+                    c.loading = true;
+                    enqueueThumbLoad(url, channelID).then(() => {
+                        if (c.url === url) { c.ok = true; repaintChannel(channelID); }
+                    }, err => {
+                        if (err === THUMB_STALE) return;
+                        c.fails++;
+                        c.retryAt = Date.now() + Math.min(60000, 5000 * c.fails);
+                    }).then(() => { if (c.url === url) c.loading = false; });
+                }
+            }
+
+            // Cards that are (nearly) on screen. Cards of the hidden views and cards
+            // scrolled far away are not in the set and cost nothing.
+            const visibleSwitchers = new Set();
+            // Cards really inside the window (no margin): the ones being looked at.
+            const focusSwitchers = new Set();
+            const focusObserver = ('IntersectionObserver' in window)
+                ? new IntersectionObserver(entries => {
+                    const now = Date.now();
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            focusSwitchers.add(entry.target);
+                            if (!flicking) ensureThumb(entry.target, now); // looked at now: its picture may be due sooner than it was
+                        } else {
+                            focusSwitchers.delete(entry.target);
+                        }
+                    });
+                }, { rootMargin: '0px' })
+                : null;
+            const thumbObserver = ('IntersectionObserver' in window)
+                ? new IntersectionObserver(entries => {
+                    const now = Date.now();
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            visibleSwitchers.add(entry.target);
+                            paintThumb(entry.target);
+                            if (!flicking) ensureThumb(entry.target, now); // scrolled into view: do not wait for the next tick
+                        } else {
+                            visibleSwitchers.delete(entry.target);
+                            focusSwitchers.delete(entry.target);
+                        }
+                    });
+                }, { rootMargin: '300px' })
+                : null;
+
+            function tickThumbs() {
+                if (document.hidden || flicking) return;
+                const now = Date.now();
+                let onScreen = 0;
+                focusSwitchers.forEach(s => { if (s.dataset.isLive.trim() === 'true') onScreen++; });
+                focusInterval = Math.max(LIVE_FOCUS_MS, Math.ceil(onScreen / THUMB_MAX_RATE) * 1000);
+                const list = thumbObserver ? Array.from(visibleSwitchers) : Array.from(activeSwitchers());
+                list.forEach(switcher => {
+                    if (!switcher.isConnected) { visibleSwitchers.delete(switcher); return; }
+                    ensureThumb(switcher, now);
+                });
+            }
+
+            // Which pictures a card can show; used to tell whether a redraw changes anything.
+            function thumbSignature(switchers) {
+                return Array.from(switchers, s => [s.dataset.isLive.trim(), s.dataset.hasCard || '',
+                                                   s.dataset.cardVer || '', s.dataset.site || ''].join(',')).join('|');
+            }
+            function thumbSignatureOfHtml(html) {
+                const tpl = document.createElement('template');
+                tpl.innerHTML = html;
+                return thumbSignature(tpl.content.querySelectorAll('.img-switcher'));
             }
 
             // Tracks when each channel's marquee animation started (by username).
             // Used to restore the animation phase after SSE rebuilds the DOM.
             const marqueeState = {};
 
-            function initMarquees() {
-                document.querySelectorAll('.collapsed-title').forEach(el => {
+            function initMarquees(scope) {
+                // Only the collapsed view has marquees; measuring hidden elements is
+                // pointless and forces a layout each time.
+                if (currentView !== 'collapsed') return;
+                (scope || document).querySelectorAll('.collapsed-title').forEach(el => {
                     // Skip channels not touched by this SSE swap — their track is already running
                     if (el.querySelector('.marquee-track')) return;
                     const span = el.querySelector('span');
@@ -769,46 +1469,38 @@
                 });
             }
 
-            // SSE re-init: reuse cached URLs, no new network requests
-            function initThumbSwitchers() {
-                document.querySelectorAll('.img-switcher').forEach(switcher => {
-                    const channelID = switcher.dataset.channelId;
-                    const isOnline = switcher.dataset.online === 'true';
-                    const hasCard = switcher.dataset.hasCard === '1';
-                    const defaultMode = isOnline ? 'live' : (hasCard ? 'card' : 'live');
-                    const saved = localStorage.getItem('dvr-thumb-' + channelID) || defaultMode;
-                    applyThumbMode(switcher, saved, false);
+            // The cards were (re)drawn: show what is known and watch them.
+            function initThumbSwitchers(scope) {
+                activeSwitchers(scope).forEach(switcher => {
+                    const st = thumbInfo(switcher.dataset.channelId);
+                    const isLive = switcher.dataset.isLive.trim();
+                    if (st.isLive !== isLive) { st.isLive = isLive; thumbDueNow(st); } // went online/offline: look for a new picture
+                    paintThumb(switcher);
+                    if (thumbObserver) { thumbObserver.observe(switcher); focusObserver.observe(switcher); }
+                    else ensureThumb(switcher, Date.now());
                 });
             }
 
-            // Click: force a fresh fetch
+            // Click on the profile/live buttons of a card.
             document.body.addEventListener('click', function(e) {
                 const btn = e.target.closest('.img-sw-btn');
                 if (!btn) return;
                 const switcher = btn.closest('.img-switcher');
                 const channelID = switcher.dataset.channelId;
-                const mode = btn.dataset.mode;
-                applyThumbMode(switcher, mode, true);
-                localStorage.setItem('dvr-thumb-' + channelID, mode);
+                writeStored('dvr-thumb-' + channelID, btn.dataset.mode);
+                if (btn.dataset.mode === 'live') thumbDueNow(thumbInfo(channelID)); // asked for it: refresh now
+                paintThumb(switcher);
+                ensureThumb(switcher, Date.now());
             });
 
-            // 60s interval: force a fresh live thumbnail fetch
-            setInterval(function() {
-                if (document.hidden) return;
-                document.querySelectorAll('.img-switcher').forEach(switcher => {
-                    const channelID = switcher.dataset.channelId;
-                    const isOnline = switcher.dataset.online === 'true';
-                    const hasCard = switcher.dataset.hasCard === '1';
-                    const defaultMode = isOnline ? 'live' : (hasCard ? 'card' : 'live');
-                    const saved = localStorage.getItem('dvr-thumb-' + channelID) || defaultMode;
-                    if (saved === 'live') applyThumbMode(switcher, 'live', true);
-                });
-            }, 15000);
+            setInterval(tickThumbs, 1000);
+            document.addEventListener('visibilitychange', function() { if (!document.hidden) tickThumbs(); });
 
             function setView(view) {
+                currentView = view;
                 const list = document.getElementById('channels-list');
                 if (list) list.setAttribute('data-view', view);
-                localStorage.setItem('dvr-view', view);
+                writeStored('dvr-view', view);
                 ['expanded', 'grid', 'collapsed'].forEach(function(v) {
                     const btn = document.getElementById('view-btn-' + v);
                     if (btn) {
@@ -821,34 +1513,414 @@
                         }
                     }
                 });
+                // Cards of the view that just became visible were not updated while hidden.
+                flushVisibleCards();
+                initThumbSwitchers();
+                initMarquees();
             }
 
 
-            // before content was swapped by HTMX
-            document.body.addEventListener("htmx:sseBeforeMessage", function (e) {
-                // ignore anything with `-log` content swap if "auto-update" was unchecked
-                let sswe_id = e.detail.elt.getAttribute('sse-swap')
-                if (sswe_id && sswe_id.endsWith("-log") ) {
-                    if (!e.detail.elt.closest(".ts-box").querySelector("[type=checkbox]").checked) {
-                        e.preventDefault()
-                        return
+            // ---- Updates only for cards that can be seen -------------------------
+            // With dozens of channels the server sends dozens of card redraws and log
+            // rewrites per second. Redrawing cards nobody can see is what made the page
+            // grind to a halt (rewriting the log text areas alone took half of the
+            // processor). An update for a card that is off screen is only remembered
+            // (the latest one per card) and applied when the card is scrolled into view.
+            //
+            // While the page is being flicked through (fast scroll) the cards that pass
+            // through the window are not worth redrawing or loading pictures for: they are
+            // gone before they can be read. Their updates wait (they are already remembered)
+            // and are applied for the cards that are in the window when the scroll slows
+            // down or stops, so the page reacts to what is on screen now instead of working
+            // through everything it passed.
+            const FLICK_PX_PER_S = 1500;      // faster than this counts as a flick
+            const FLICK_END_MS = 140;         // no scroll event for this long: the flick is over
+            let lastScrollAt = 0, flicking = false, flickTimer = 0;
+            let speedY = window.scrollY, speedT = performance.now();
+            window.addEventListener('scroll', function () {
+                const now = performance.now();
+                lastScrollAt = Date.now();
+                if (now - speedT >= 50) { // speed over the last >= 50 ms
+                    const was = flicking;
+                    flicking = Math.abs(window.scrollY - speedY) / (now - speedT) * 1000 > FLICK_PX_PER_S;
+                    speedY = window.scrollY; speedT = now;
+                    if (was && !flicking) setTimeout(afterFlick, 0); // slowed down: catch up outside the scroll event
+                }
+                if (flicking && !flickTimer) flickTimer = setTimeout(checkFlickEnd, FLICK_END_MS);
+            }, { passive: true });
+            function afterFlick() {
+                flushVisibleCards(); // the cards that ended up on screen catch up now
+                tickThumbs();
+            }
+            function checkFlickEnd() {
+                flickTimer = 0;
+                const quiet = Date.now() - lastScrollAt;
+                if (quiet < FLICK_END_MS) { flickTimer = setTimeout(checkFlickEnd, FLICK_END_MS - quiet); return; }
+                if (flicking) { flicking = false; afterFlick(); }
+            }
+
+            const visibleCards = new Set();   // [sse-swap] elements near the viewport
+            const pendingCards = new Map();   // element -> latest html / log text received while it was not visible
+            const cardObserver = ('IntersectionObserver' in window)
+                ? new IntersectionObserver(entries => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            visibleCards.add(entry.target);
+                            if (!flicking) applyPendingCard(entry.target);
+                        } else {
+                            visibleCards.delete(entry.target);
+                        }
+                    });
+                }, { rootMargin: '400px' })
+                : null;
+            if (cardObserver) document.querySelectorAll('[sse-swap]').forEach(el => cardObserver.observe(el));
+
+            function isCardVisible(elt) { return (!cardObserver || visibleCards.has(elt)) && !flicking; }
+
+            // Log text areas are written together, once per frame: one layout for all of
+            // them instead of one for each (reading scrollHeight forces a layout).
+            const logQueue = new Map();
+            let logFlushScheduled = false;
+            function writeLog(textarea, text) {
+                logQueue.set(textarea, text);
+                if (logFlushScheduled) return;
+                logFlushScheduled = true;
+                requestAnimationFrame(function () {
+                    logFlushScheduled = false;
+                    const batch = Array.from(logQueue);
+                    logQueue.clear();
+                    batch.forEach(([ta, t]) => { if (ta.value !== t) ta.value = t; });
+                    batch.forEach(([ta]) => { ta.scrollTop = ta.scrollHeight; });
+                });
+            }
+
+            // ---- Patching a card instead of rebuilding it ------------------------
+            // An update of a card is nearly always the same markup with a few new numbers
+            // (duration, size, viewers). Rebuilding the card with innerHTML recreates
+            // about a hundred elements and makes the browser restyle and lay out the card
+            // every time, which is what made scrolling through many cards stutter. The new
+            // markup is parsed inertly (no style, no layout) and only what differs is
+            // written into the live card. Anything that really changes shape (the Pause
+            // button becoming Resume, a new title) is replaced and processed by htmx again.
+            function syncAttrs(oldN, newN) {
+                const na = newN.attributes, oa = oldN.attributes;
+                // htmx reads hx-* attributes when it processes an element: if they differ
+                // the element has to be replaced and processed again.
+                for (let i = 0; i < na.length; i++) {
+                    if (na[i].name.startsWith('hx-') && oldN.getAttribute(na[i].name) !== na[i].value) return false;
+                }
+                for (let i = 0; i < oa.length; i++) {
+                    if (oa[i].name.startsWith('hx-') && !newN.hasAttribute(oa[i].name)) return false;
+                }
+                for (let i = 0; i < na.length; i++) {
+                    if (oldN.getAttribute(na[i].name) !== na[i].value) oldN.setAttribute(na[i].name, na[i].value);
+                }
+                for (let i = oa.length - 1; i >= 0; i--) {
+                    if (!newN.hasAttribute(oa[i].name)) oldN.removeAttribute(oa[i].name);
+                }
+                return true;
+            }
+
+            function replaceContents(oldParent, newParent, ctx) {
+                oldParent.replaceChildren(...Array.from(newParent.childNodes));
+                ctx.process.push(oldParent);
+                ctx.marquee = true;
+            }
+
+            function patchChildren(oldParent, newParent, ctx) {
+                const o = Array.from(oldParent.childNodes), n = Array.from(newParent.childNodes);
+                if (o.length !== n.length) { replaceContents(oldParent, newParent, ctx); return; }
+                for (let i = 0; i < n.length; i++) patchNode(o[i], n[i], ctx);
+            }
+
+            function patchNode(oldN, newN, ctx) {
+                if (oldN.nodeType !== newN.nodeType || oldN.nodeName !== newN.nodeName) {
+                    oldN.replaceWith(newN);
+                    if (newN.nodeType === 1) ctx.process.push(newN);
+                    ctx.marquee = true;
+                    return;
+                }
+                if (oldN.nodeType === 3 || oldN.nodeType === 8) { // text, comment
+                    if (oldN.nodeValue !== newN.nodeValue) oldN.nodeValue = newN.nodeValue;
+                    return;
+                }
+                if (oldN.nodeType !== 1) return;
+                if (oldN.classList.contains('collapsed-title')) {
+                    // The marquee rewrites the inside of the title: compare the text only.
+                    const text = el => { const sp = el.querySelector('span'); return sp ? sp.textContent : ''; };
+                    if (text(oldN) !== text(newN)) { replaceContents(oldN, newN, ctx); ctx.marquee = true; }
+                    return;
+                }
+                if (!syncAttrs(oldN, newN)) { oldN.replaceWith(newN); ctx.process.push(newN); ctx.marquee = true; return; }
+                patchChildren(oldN, newN, ctx);
+            }
+
+            function patchCard(elt, html) {
+                const tpl = document.createElement('template');
+                tpl.innerHTML = html;
+                const ctx = { process: [], marquee: false };
+                patchChildren(elt, tpl.content, ctx);
+                ctx.process.forEach(function (node) { if (node.isConnected) htmx.process(node); }); // new buttons need their hx-* processed
+                return ctx;
+            }
+
+            // Shows an update on its card now.
+            function applyCardUpdate(elt, data) {
+                const id = elt.getAttribute('sse-swap') || '';
+                if (id.endsWith('-log')) { writeLog(elt, data); return; }
+                if (id.endsWith('-thumb') &&
+                    thumbSignatureOfHtml(data) === thumbSignature(elt.querySelectorAll('.img-switcher'))) {
+                    return; // same pictures as before (typical after a reconnect): leave the cards alone
+                }
+                if (id.endsWith('-info')) {
+                    const ctx = patchCard(elt, data);
+                    scheduleStats();
+                    if (ctx.marquee) initMarquees(elt);
+                    return;
+                }
+                elt.innerHTML = data;
+                htmx.process(elt); // the new buttons need their hx-* attributes processed
+                if (id.endsWith('-thumb')) initThumbSwitchers(elt);
+            }
+
+            // Entry point of every update of a card: applied now if the card can be
+            // seen, remembered otherwise.
+            function deliverCard(elt, data) {
+                const id = elt.getAttribute('sse-swap') || '';
+                elt._updatedAt = Date.now(); // lets watchPendingButton know that the server reported this card
+                if (id.endsWith('-info')) { noteRank(elt, data); noteMeta(elt, data); } // the card may have to change place or filter, seen or not
+                if (id.endsWith('-log')) {
+                    const box = elt.closest('.ts-box');
+                    const autoUpdate = box && box.querySelector('[type=checkbox]');
+                    if (autoUpdate && !autoUpdate.checked) return; // "Auto-Update & Scroll Logs" is off
+                }
+                if (isCardVisible(elt)) {
+                    pendingCards.delete(elt);
+                    applyCardUpdate(elt, data);
+                } else {
+                    pendingCards.set(elt, data);
+                }
+            }
+
+            function applyPendingCard(elt) {
+                if (!pendingCards.has(elt)) return;
+                const data = pendingCards.get(elt);
+                pendingCards.delete(elt);
+                applyCardUpdate(elt, data);
+            }
+
+            function flushVisibleCards() {
+                Array.from(pendingCards.keys()).forEach(elt => { if (isCardVisible(elt)) applyPendingCard(elt); });
+            }
+            // (isCardVisible is false while flicking, so nothing is applied until the flick is over.)
+
+            // ---- Live order of the list --------------------------------------------
+            // The server numbers every card: 0 recording, 1 on air but not recorded,
+            // 2 off the air but still tried, 3 off the air and paused (data-rank, repeated in every card update). When the rank of a
+            // card changes, the list is re-ordered here without reloading the page. Only
+            // the cards that really change place are moved in the DOM (everything that can
+            // stay is found with the longest increasing subsequence), and the ones on
+            // screen glide to their new place: FLIP with the Web Animations API, i.e. only
+            // transforms, run by the compositor, nothing is laid out while they play.
+            // Nothing is animated that cannot be seen, and nothing moves while the user is
+            // scrolling, has just clicked, has a dialog open or is pointing at a button.
+            const channelsList = document.getElementById('channels-list');
+            const RANK_RE = /data-rank="(\d)"/;
+            const REORDER_DELAY_MS = 500;       // a burst of changes becomes one move
+            const REORDER_RETRY_MS = 400;       // look again while the user is busy
+            const REORDER_ANIM_MS = 380;
+            const REORDER_MAX_ANIMATED = 40;    // more than this: the rest just move
+            const reducedMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+            let reorderTimer = 0, reorderSince = 0;
+            let lastPointerAt = 0;
+            let reorderAnims = [];
+
+            ['pointerdown', 'keydown'].forEach(function (type) {
+                window.addEventListener(type, function () { lastPointerAt = Date.now(); }, { passive: true, capture: true });
+            });
+            if (channelsList) {
+                Array.from(channelsList.children).forEach(function (box) { if (box.dataset.sort !== undefined) box._shownRank = Number(box.dataset.rank); });
+            }
+
+            function noteRank(elt, data) {
+                const m = RANK_RE.exec(data);
+                if (!m) return;
+                const box = elt.closest('.ts-box');
+                if (!box || box.dataset.rank === m[1]) return;
+                box.dataset.rank = m[1];
+                if (typeof filterState !== 'undefined' && filterState.onlyAir) scheduleMetaRefresh();
+                scheduleReorder(REORDER_DELAY_MS);
+            }
+
+            function scheduleReorder(delay) {
+                if (reorderTimer) return;
+                if (!reorderSince) reorderSince = Date.now();
+                reorderTimer = setTimeout(runReorder, delay);
+            }
+
+            function runReorder() {
+                reorderTimer = 0;
+                if (!channelsList) return;
+                const now = Date.now();
+                const busy = now - lastScrollAt < 300 || now - lastPointerAt < 1500 || !!document.querySelector('dialog[open]');
+                // A button under the pointer holds the move back, but not for ever.
+                const pointing = now - reorderSince < 8000 && !!channelsList.querySelector('button:hover, a:hover, input:hover');
+                if (busy || pointing) { scheduleReorder(REORDER_RETRY_MS); return; }
+                reorderSince = 0;
+                applyOrder();
+            }
+
+            // ---- Section headers ---------------------------------------------------
+            // One header per section, always right before the first card of its section
+            // (the server renders the ones that exist at load time). A section without
+            // cards on screen (none, or all filtered out) has its header hidden.
+            const SECTION_TITLES = ['Recording', 'On air \u00b7 not recording', 'Offline \u00b7 still trying', 'Offline \u00b7 paused'];
+            const sectionHeaders = [null, null, null, null];
+            function sectionHeader(r) {
+                let h = sectionHeaders[r];
+                if (h) return h;
+                h = channelsList.querySelector('.section-head[data-section="' + r + '"]');
+                if (!h) {
+                    h = document.createElement('div');
+                    h.className = 'section-head';
+                    h.dataset.section = r;
+                    h.innerHTML = '<span class="section-dot"></span><span class="section-title"></span><span class="section-count"></span>';
+                    h.querySelector('.section-title').textContent = SECTION_TITLES[r];
+                }
+                sectionHeaders[r] = h;
+                return h;
+            }
+            function syncSections() {
+                if (!channelsList) return;
+                const first = [null, null, null, null], shown = [0, 0, 0, 0];
+                const kids = channelsList.children;
+                for (let i = 0; i < kids.length; i++) {
+                    const el = kids[i];
+                    if (el.dataset.sort === undefined) continue;
+                    const r = Number(el.dataset.rank);
+                    if (!(r >= 0 && r <= 3)) continue;
+                    if (!first[r]) first[r] = el;
+                    if (!el.classList.contains('is-filtered')) shown[r]++;
+                }
+                for (let r = 0; r < 4; r++) {
+                    const h = sectionHeader(r);
+                    if (!first[r]) { if (h.parentNode) h.remove(); continue; }
+                    if (h.nextElementSibling !== first[r] || h.parentNode !== channelsList) channelsList.insertBefore(h, first[r]);
+                    const label = shown[r] === 0 ? '' : String(shown[r]);
+                    const c = h.querySelector('.section-count');
+                    if (c && c.textContent !== label) c.textContent = label;
+                    h.hidden = shown[r] === 0;
+                }
+            }
+            if (channelsList) syncSections();
+
+            function compareBoxes(a, b) {
+                const ra = Number(a.dataset.rank), rb = Number(b.dataset.rank);
+                if (ra !== rb) return ra - rb;
+                const ka = a.dataset.sort, kb = b.dataset.sort;
+                return ka < kb ? -1 : (ka > kb ? 1 : 0);
+            }
+
+            // The largest set of boxes that is already in the right relative order.
+            function boxesThatCanStay(seq) {
+                const tails = [], tailIdx = [], prev = new Array(seq.length);
+                for (let i = 0; i < seq.length; i++) {
+                    const v = seq[i]._target;
+                    let lo = 0, hi = tails.length;
+                    while (lo < hi) { const mid = (lo + hi) >> 1; if (tails[mid] < v) lo = mid + 1; else hi = mid; }
+                    tails[lo] = v; tailIdx[lo] = i;
+                    prev[i] = lo > 0 ? tailIdx[lo - 1] : -1;
+                }
+                const keep = new Set();
+                for (let i = tails.length ? tailIdx[tails.length - 1] : -1; i >= 0; i = prev[i]) keep.add(seq[i]);
+                return keep;
+            }
+
+            function applyOrder() {
+                const cur = Array.from(channelsList.children).filter(function (el) { return el.dataset && el.dataset.sort !== undefined; });
+                if (cur.length < 2) { syncSections(); return; }
+                const want = cur.slice().sort(compareBoxes);
+                want.forEach(function (b, i) { b._target = i; });
+                const keep = boxesThatCanStay(cur);
+                const improved = [];
+                cur.forEach(function (b) {
+                    const r = Number(b.dataset.rank);
+                    if (b._shownRank > r) improved.push(b);
+                    b._shownRank = r;
+                });
+                if (keep.size === cur.length) { syncSections(); return; } // already in order
+
+                reorderAnims.forEach(function (a) { a.cancel(); }); // jump to the end of a move still playing
+                reorderAnims = [];
+
+                // Positions before the move, only for what is on screen (or about to be).
+                const measure = !document.hidden;
+                const animate = measure && !reducedMotion.matches && typeof Element.prototype.animate === 'function';
+                const vh = window.innerHeight;
+                const before = new Map();
+                let anchor = null, anchorTop = 0;
+                if (measure) {
+                    const listTop = channelsList.getBoundingClientRect().top;
+                    for (let i = 0; i < cur.length; i++) {
+                        const r = cur[i].getBoundingClientRect();
+                        if (r.top >= 2 * vh) break;                // the rest is further down
+                        if (r.bottom <= -vh) continue;
+                        before.set(cur[i], r);
+                        // Keep what the user is looking at where it is, unless the start of the list is on screen.
+                        if (!anchor && listTop < 0 && r.bottom > 0 && keep.has(cur[i])) { anchor = cur[i]; anchorTop = r.top; }
                     }
                 }
-                // else scroll the textarea to bottom with async trick
-                setTimeout(() => {
-                    let textarea = e.detail.elt.closest(".ts-box") && e.detail.elt.closest(".ts-box").querySelector("textarea")
-                    if (textarea) textarea.scrollTop = textarea.scrollHeight
-                }, 0)
-            })
 
-            // after content was swapped by HTMX (for status updates)
-            document.body.addEventListener("htmx:sseMessage", function (e) {
-                let sswe_id = e.detail.elt.getAttribute('sse-swap')
-                if (sswe_id && sswe_id.endsWith("-info") ) {
-                    fetchStats();
-                    initThumbSwitchers();
-                    initMarquees();
+                channelsList.style.overflowAnchor = 'none'; // the page compensates the scroll itself, below
+                let ref = null;
+                for (let k = want.length - 1; k >= 0; k--) {
+                    if (!keep.has(want[k])) channelsList.insertBefore(want[k], ref);
+                    ref = want[k];
                 }
+                syncSections(); // the headers follow their first card (before measuring where everything ended up)
+
+                if (measure) {
+                    if (anchor) {
+                        const d = anchor.getBoundingClientRect().top - anchorTop;
+                        if (Math.abs(d) > 0.5) window.scrollTo({ top: window.scrollY + d, behavior: 'instant' });
+                    }
+                    if (animate) {
+                        improved.forEach(function (b) { // a short green halo on the cards that moved up (where they ended up: before the glide below moves them back to where they were)
+                            const r = b.getBoundingClientRect();
+                            if (r.bottom > 0 && r.top < vh) {
+                                reorderAnims.push(b.animate([{ boxShadow: '0 0 0 2px rgba(46,160,67,0.95)' }, { boxShadow: '0 0 0 0 rgba(46,160,67,0)' }],
+                                    { duration: 1400, easing: 'ease-out' }));
+                            }
+                        });
+                        let animated = 0;
+                        for (let i = 0; i < want.length && animated < REORDER_MAX_ANIMATED; i++) {
+                            const b = want[i], r = b.getBoundingClientRect();
+                            if (r.top >= 2 * vh) break;
+                            if (r.bottom <= -vh) continue;
+                            const old = before.get(b);
+                            const opts = { duration: REORDER_ANIM_MS, easing: 'cubic-bezier(0.22, 0.8, 0.3, 1)' };
+                            if (old) {
+                                const dx = old.left - r.left, dy = old.top - r.top;
+                                if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+                                reorderAnims.push(b.animate([{ transform: 'translate(' + dx + 'px,' + dy + 'px)' }, { transform: 'none' }], opts));
+                                animated++;
+                            } else if (r.bottom > 0 && r.top < vh) { // came from far away: fade in instead of flying across the page
+                                reorderAnims.push(b.animate([{ opacity: 0, transform: 'translateY(-14px)' }, { opacity: 1, transform: 'none' }], opts));
+                                animated++;
+                            }
+                        }
+                    }
+                }
+                channelsList.style.overflowAnchor = '';
+            }
+
+            // Every card update arrives here. htmx would parse and swap it for every
+            // card, seen or not; the page does it itself, only where it is needed.
+            document.body.addEventListener("htmx:sseBeforeMessage", function (e) {
+                const elt = e.detail.elt;
+                if (!elt || !elt.getAttribute('sse-swap')) return;
+                e.preventDefault();
+                deliverCard(elt, e.detail.data);
             })
 
             document.body.addEventListener("htmx:beforeRequest", function (e) {
@@ -859,19 +1931,67 @@
                 if (!btn.dataset.originalLabel) {
                     btn.dataset.originalLabel = btn.textContent.trim();
                 }
+                if (btn.dataset.originalHtml === undefined) {
+                    btn.dataset.originalHtml = btn.innerHTML; // keeps the icon
+                }
                 btn.textContent = btn.dataset.pendingLabel;
             });
+
+            function restoreButton(btn) {
+                if (btn.dataset.originalHtml !== undefined) {
+                    btn.innerHTML = btn.dataset.originalHtml;
+                } else if (btn.dataset.originalLabel) {
+                    btn.textContent = btn.dataset.originalLabel;
+                }
+                btn.disabled = false;
+            }
 
             document.body.addEventListener("htmx:afterRequest", function (e) {
                 const btn = e.detail && e.detail.elt && e.detail.elt.matches('button[data-pending-label]')
                     ? e.detail.elt
                     : null;
                 if (!btn) return;
-                if (e.detail.failed && btn.dataset.originalLabel) {
-                    btn.textContent = btn.dataset.originalLabel;
-                    btn.disabled = false;
+                if (e.detail.failed) {
+                    restoreButton(btn);
+                } else {
+                    watchPendingButton(btn);
                 }
             });
+
+            // After a successful Pause/Resume the server reports the new state of the
+            // card through the event stream, normally within a fraction of a second.
+            // If nothing at all arrived for the card after the click, that update was
+            // lost (connection hiccup): fetch the current state instead of leaving
+            // "Resuming..." (or the old state) on screen for ever.
+            function watchPendingButton(btn) {
+                const card = btn.closest('[sse-swap]');
+                const clickedAt = Date.now();
+                setTimeout(async function () {
+                    if (card && (card._updatedAt || 0) > clickedAt) return; // the server reported the card after the click: the normal case
+                    await resyncCards();
+                    if (document.body.contains(btn)) restoreButton(btn); // state unchanged
+                }, 4000);
+            }
+
+            // Brings every card up to date from a freshly rendered copy of the page.
+            // Used as a safety net only; the event stream does this normally.
+            let lastResyncAt = 0;
+            async function resyncCards() {
+                if (Date.now() - lastResyncAt < 3000) return;
+                lastResyncAt = Date.now();
+                try {
+                    const resp = await fetch('/', { cache: 'no-store', headers: { 'Accept': 'text/html' } });
+                    if (!resp.ok) return;
+                    const fresh = new DOMParser().parseFromString(await resp.text(), 'text/html');
+                    fresh.querySelectorAll('[sse-swap]').forEach(function (src) {
+                        const id = src.getAttribute('sse-swap');
+                        const dst = document.querySelector('[sse-swap="' + id + '"]');
+                        if (!dst) return; // channel added/removed elsewhere: a page load handles that
+                        deliverCard(dst, id.endsWith('-log') ? src.value : src.innerHTML);
+                    });
+                    scheduleStats();
+                } catch (err) { /* offline: the next reconnect resyncs */ }
+            }
 
             function handleDeleteSubmit(form, message) {
                 if (!confirm(message)) return false;
@@ -886,12 +2006,179 @@
                 return true;
             }
 
+            // ---- Buttons of a card: copy link, settings -----------------------------
+            // (The Auto button is a plain htmx post, see channel_info.html.) One delegated
+            // handler for every card, so the buttons keep working however the cards are redrawn.
+            function copyText(text) {
+                if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+                return new Promise(function (resolve, reject) { // plain http on a network address: no clipboard API
+                    const ta = document.createElement('textarea');
+                    ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+                    document.body.appendChild(ta); ta.select();
+                    let ok = false;
+                    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+                    ta.remove();
+                    ok ? resolve() : reject(new Error('copy failed'));
+                });
+            }
+            function flashGlyph(btn, mark) {
+                const g = btn.querySelector('.ct-glyph');
+                if (!g) return;
+                const before = g.textContent;
+                g.textContent = mark;
+                setTimeout(function () { if (g.isConnected) g.textContent = before; }, 1300);
+            }
+
+            const channelDialog = document.getElementById('channel-dialog');
+            const channelForm = document.getElementById('channel-form');
+            const cdError = document.getElementById('cd-error');
+            let cdChannelID = '';
+            function openChannelDialog(btn) {
+                if (!channelDialog || !channelForm) return;
+                const d = btn.dataset;
+                cdChannelID = d.channelId;
+                document.getElementById('cd-who').textContent = d.username + ' · ' + d.siteLabel;
+                const sel = document.getElementById('cd-resolution');
+                if (!Array.from(sel.options).some(function (o) { return o.value === d.res; })) { // set by hand to a value that is not in the list
+                    const o = document.createElement('option'); o.value = d.res; o.textContent = d.res + 'p'; sel.appendChild(o);
+                }
+                sel.value = d.res;
+                channelForm.querySelectorAll('input[name=framerate]').forEach(function (r) { r.checked = r.value === d.fps; });
+                document.getElementById('cd-pattern').value = d.pattern;
+                document.getElementById('cd-max-size').value = d.maxSize;
+                document.getElementById('cd-max-dur').value = d.maxDur;
+                document.getElementById('cd-auto').checked = d.auto === '1';
+                document.getElementById('cd-disk').checked = d.diskCheck === '1';
+                document.getElementById('cd-det-on').checked = d.detOn === '1';
+                document.getElementById('cd-det-model').value = d.detModel || '';
+                document.getElementById('cd-det-source').value = d.detSource || 'thumb';
+                document.getElementById('cd-det-labels').value = d.detLabels || '';
+                document.getElementById('cd-det-min').value = d.detMin || '60';
+                document.getElementById('cd-det-interval').value = d.detInterval || '10';
+                document.getElementById('cd-det-gate').checked = d.detGate === '1';
+                document.getElementById('cd-det-idle').value = d.detIdle || '60';
+                document.getElementById('cd-det-clips').checked = d.detClips === '1';
+                document.getElementById('cd-det-pre').value = d.detPre || '5';
+                document.getElementById('cd-det-post').value = d.detPost || '10';
+                cdDetSync();
+                cdError.classList.remove('is-shown');
+                document.getElementById('cd-save').disabled = false;
+                if (!channelDialog.open) channelDialog.showModal();
+            }
+            function closeChannelDialog() { if (channelDialog && channelDialog.open) channelDialog.close(); }
+
+            document.body.addEventListener('click', function (e) {
+                const btn = e.target.closest('.ct-btn');
+                if (btn) {
+                    if (btn.dataset.act === 'copy') {
+                        copyText(btn.dataset.link).then(function () { flashGlyph(btn, '\u2713'); }, function () { flashGlyph(btn, '!'); });
+                    } else if (btn.dataset.act === 'settings') {
+                        openChannelDialog(btn);
+                    } else if (btn.dataset.act === 'detect') { // the status chip opens the settings of its card
+                        const gear = btn.parentElement.querySelector('[data-act=settings]');
+                        if (gear) openChannelDialog(gear);
+                    }
+                    return;
+                }
+                if (e.target.closest('[data-cd-close]')) closeChannelDialog();
+            });
+            if (channelForm) channelForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                const fd = new URLSearchParams();
+                fd.set('resolution', document.getElementById('cd-resolution').value);
+                const fps = channelForm.querySelector('input[name=framerate]:checked');
+                if (fps) fd.set('framerate', fps.value);
+                fd.set('pattern', document.getElementById('cd-pattern').value);
+                fd.set('max_filesize', document.getElementById('cd-max-size').value || '0');
+                fd.set('max_duration', document.getElementById('cd-max-dur').value || '0');
+                fd.set('auto_record', document.getElementById('cd-auto').checked ? '1' : '0');
+                fd.set('auto_disk_check', document.getElementById('cd-disk').checked ? '1' : '0');
+                fd.set('detect_enabled', document.getElementById('cd-det-on').checked ? '1' : '0');
+                fd.set('detect_model', document.getElementById('cd-det-model').value);
+                fd.set('detect_source', document.getElementById('cd-det-source').value);
+                fd.set('detect_labels', document.getElementById('cd-det-labels').value);
+                fd.set('detect_min_score', document.getElementById('cd-det-min').value || '60');
+                fd.set('detect_interval', document.getElementById('cd-det-interval').value || '0');
+                fd.set('detect_gate', document.getElementById('cd-det-gate').checked ? '1' : '0');
+                fd.set('detect_idle', document.getElementById('cd-det-idle').value || '0');
+                fd.set('detect_clips', document.getElementById('cd-det-clips').checked ? '1' : '0');
+                fd.set('detect_pre', document.getElementById('cd-det-pre').value || '0');
+                fd.set('detect_post', document.getElementById('cd-det-post').value || '0');
+                const save = document.getElementById('cd-save');
+                save.disabled = true;
+                fetch('/update_channel/' + encodeURIComponent(cdChannelID), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: fd.toString()
+                }).then(function (res) {
+                    if (res.ok) { closeChannelDialog(); return; }
+                    return res.text().then(function (t) { throw new Error(t || ('HTTP ' + res.status)); });
+                }).catch(function (err) {
+                    cdError.textContent = err.message;
+                    cdError.classList.add('is-shown');
+                    save.disabled = false;
+                });
+            });
+
+            // Image detection: the part of the channel dialog and the Test button of the settings.
+            const detModels = {}; // name -> {kind, labels, provider}
+            function cdDetSync() {
+                const on = document.getElementById('cd-det-on').checked;
+                document.getElementById('cd-det-body').hidden = !on;
+                const stream = document.getElementById('cd-det-source').value === 'stream';
+                const gate = document.getElementById('cd-det-gate');
+                gate.disabled = stream; // a channel that is not recorded has no recording to look at
+                if (stream) gate.checked = false;
+                document.getElementById('cd-det-idle').disabled = stream || !gate.checked;
+                const clips = document.getElementById('cd-det-clips').checked;
+                document.getElementById('cd-det-pre').disabled = document.getElementById('cd-det-post').disabled = !clips;
+                const m = detModels[document.getElementById('cd-det-model').value.trim()];
+                document.getElementById('cd-det-modelinfo').textContent = m
+                    ? (m.kind === 'yolox' ? 'Finds objects with boxes' : 'Classifies the whole picture') + ' · labels: ' + (m.labels || []).join(', ') + ' · runs on ' + (m.provider || '').replace('ExecutionProvider', '')
+                    : '';
+            }
+            function detPost(url, body) {
+                return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body || '' }).then(function (r) { return r.json(); });
+            }
+            function detLoadModels() {
+                detPost('/api/detect/models').then(function (r) {
+                    const dl = document.getElementById('cd-det-models');
+                    dl.textContent = '';
+                    Object.keys(detModels).forEach(function (k) { delete detModels[k]; });
+                    (r.models || []).forEach(function (m) {
+                        if (m.error) return;
+                        detModels[m.name] = m;
+                        const o = document.createElement('option'); o.value = m.name; dl.appendChild(o);
+                    });
+                    if (!r.ok) document.getElementById('cd-det-modelinfo').textContent = r.error || '';
+                    else cdDetSync();
+                }).catch(function () {});
+            }
+            ['cd-det-on', 'cd-det-source', 'cd-det-gate', 'cd-det-clips', 'cd-det-model'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener(id === 'cd-det-model' ? 'input' : 'change', cdDetSync);
+            });
+            if (channelDialog) channelDialog.addEventListener('toggle', function () { if (channelDialog.open) detLoadModels(); });
+            const detTest = document.getElementById('detect-test');
+            if (detTest) detTest.addEventListener('click', function () {
+                const out = document.getElementById('detect-test-result');
+                const f = detTest.form, fd = new URLSearchParams();
+                ['detect_backend', 'detect_local_url', 'detect_colab_url', 'detect_token'].forEach(function (n) {
+                    const el = f.querySelector('[name=' + n + ']:checked') || f.querySelector('[name=' + n + ']');
+                    fd.set(n, el ? el.value : '');
+                });
+                out.textContent = 'Testing…';
+                detPost('/api/detect/models', fd.toString()).then(function (r) {
+                    out.textContent = r.ok
+                        ? 'Connected. Models: ' + ((r.models || []).map(function (m) { return m.name + (m.error ? ' (error: ' + m.error + ')' : ' (' + m.kind + ', ' + (m.provider || '').replace('ExecutionProvider', '') + ')'); }).join(', ') || 'none yet')
+                        : 'Not working: ' + r.error;
+                }).catch(function (e) { out.textContent = 'Not working: ' + e.message; });
+            });
+
             // Initial setup on page load
             document.addEventListener("DOMContentLoaded", function() {
-                const savedView = localStorage.getItem('dvr-view') || 'expanded';
-                setView(savedView);
-                initThumbSwitchers();
-                initMarquees();
+                const savedView = readStored('dvr-view') || 'expanded';
+                setView(savedView); // also initialises thumbnails and marquees of that view
             });
 
             document.body.querySelectorAll("textarea").forEach((textarea) => {
@@ -913,7 +2200,26 @@
                 if (h > 0) return `${h}h ${m}m`;
                 return `${m}m`;
             }
+            // Stats are refreshed every 30s and, when a channel changes state, soon
+            // after - but never more than once every STATS_MIN_GAP_MS. (They used to
+            // be fetched on every single channel update.)
+            const STATS_MIN_GAP_MS = 10000;
+            let lastStatsAt = 0;
+            let statsTimer = null;
+            function scheduleStats() {
+                if (statsTimer) return;
+                const wait = Math.max(0, STATS_MIN_GAP_MS - (Date.now() - lastStatsAt));
+                statsTimer = setTimeout(function() {
+                    statsTimer = null;
+                    fetchStats();
+                }, wait);
+            }
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) fetchStats();
+            });
             function fetchStats() {
+                if (document.hidden) return;
+                lastStatsAt = Date.now();
                 fetch('/api/stats').then(r => r.json()).then(data => {
                     const bar = document.getElementById('stats-bar');
                     if (!bar) return;
@@ -945,10 +2251,252 @@
                         ? `${count} RECORDING`
                         : 'NO RECORDING';
                     dot.style.background = count > 0 ? '#4caf50' : 'rgba(255,255,255,0.35)';
+
+                    // How the channels on the air are detected (works with this page closed)
+                    const pr = data.presence || {};
+                    let text = '', detail = '';
+                    if (pr.method === 'list') { text = 'On-air list'; detail = 'Main method: the list of rooms on the air. Last answer ' + pr.age_sec + ' s ago.'; }
+                    else if (pr.method === 'probe') {
+                        text = 'Per-channel check';
+                        detail = 'Backup method: each paused channel is asked about, a few at a time.' +
+                                 (pr.detail === 'no-list-config' ? ' Add your Chaturbate affiliate ID in Settings to use the faster list.' :
+                                  pr.detail === 'list-failing' ? ' The list failed, it will be retried.' : '');
+                    }
+                    const pItem = document.getElementById('stat-presence-item');
+                    if (pItem) {
+                        pItem.style.display = text ? 'flex' : 'none';
+                        document.getElementById('stat-presence').textContent = text;
+                        pItem.title = detail;
+                    }
+                    const pSet = document.getElementById('presence-status');
+                    if (pSet) pSet.textContent = detail ? 'Now: ' + detail : '';
                 }).catch(() => {});
             }
             fetchStats();
             setInterval(fetchStats, 30000);
+
+            // ---- Top bar, hide images, search and tags ----------------------------
+            // The bar copies the colour of the page so that what scrolls behind it is covered.
+            const rootEl = document.documentElement;
+            (function () {
+                function pageColor() {
+                    const list = [document.body, rootEl];
+                    for (let i = 0; i < list.length; i++) {
+                        const c = getComputedStyle(list[i]).backgroundColor;
+                        if (c && c !== 'transparent' && !/,\s*0\)$/.test(c)) return c;
+                    }
+                    return '#1b1b1b';
+                }
+                rootEl.style.setProperty('--page-bg', pageColor());
+                const bar = document.getElementById('top-bar');
+                function measureBar() { if (bar) rootEl.style.setProperty('--topbar-h', (Math.ceil(bar.getBoundingClientRect().height) + 10) + 'px'); }
+                measureBar();
+                if (bar && window.ResizeObserver) new ResizeObserver(measureBar).observe(bar);
+            })();
+
+            const hideImagesSwitch = document.getElementById('hide-images-switch');
+            if (hideImagesSwitch) {
+                hideImagesSwitch.checked = imagesHidden;
+                hideImagesSwitch.addEventListener('change', function () {
+                    imagesHidden = hideImagesSwitch.checked;
+                    rootEl.classList.toggle('hide-images', imagesHidden);
+                    writeStored('dvr-hide-images', imagesHidden ? '1' : '0');
+                    if (imagesHidden) { while (thumbQueue.length) thumbQueue.pop().reject(THUMB_STALE); }
+                    else requestAnimationFrame(tickThumbs); // pictures come back right away
+                });
+            }
+
+            // Search and tag filter. Every card carries what can be searched (data-q: name,
+            // title, gender, tags) and its tags (data-tags, |a|b|), repeated in each card
+            // update. Filtering only toggles a class on the cards, nothing is redrawn, and a
+            // card that is filtered out is not loaded (it is not on screen).
+            const filterState = { tokens: [], tags: new Set(), tagMode: 'all', onlyAir: false, tagQuery: '' };
+            const searchInput = document.getElementById('search-input');
+            const tagSearchInput = document.getElementById('tag-search');
+            const decodeBox = document.createElement('textarea');
+            function decodeHtml(s) { decodeBox.innerHTML = s; return decodeBox.value; }
+            function normText(s) { return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+            const Q_RE = /data-q="([^"]*)"/, TAGS_RE = /data-tags="([^"]*)"/;
+
+            function allBoxes() {
+                return channelsList ? Array.from(channelsList.children).filter(function (el) { return el.dataset.sort !== undefined; }) : [];
+            }
+            function readBoxMeta(box, qRaw, tagsRaw) {
+                let changed = false;
+                if (qRaw !== undefined && qRaw !== box._qRaw) { box._qRaw = qRaw; box._q = normText(decodeHtml(qRaw)); changed = true; }
+                if (tagsRaw !== undefined && tagsRaw !== box._tagsRaw) {
+                    box._tagsRaw = tagsRaw;
+                    box._tags = decodeHtml(tagsRaw).split('|').filter(Boolean);
+                    changed = true;
+                }
+                return changed;
+            }
+            allBoxes().forEach(function (box) {
+                const d = box.querySelector('[data-q]');
+                if (d) readBoxMeta(box, d.getAttribute('data-q') === null ? undefined : escapeAttr(d.getAttribute('data-q')), escapeAttr(d.getAttribute('data-tags') || ''));
+            });
+            // (the raw text of a card update is what the server wrote inside the attribute; for the
+            // cards of the first page the same text is rebuilt from the decoded attribute value)
+            function escapeAttr(v) { return v.replace(/&/g, '&amp;').replace(/"/g, '&#34;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+            function boxMatches(box) {
+                if (filterState.onlyAir && Number(box.dataset.rank) > 1) return false;
+                if (filterState.tokens.length) {
+                    const q = box._q || '';
+                    for (let i = 0; i < filterState.tokens.length; i++) if (q.indexOf(filterState.tokens[i]) < 0) return false;
+                }
+                if (filterState.tags.size) {
+                    const tg = box._tags || [];
+                    if (filterState.tagMode === 'all') {
+                        for (const t of filterState.tags) if (tg.indexOf(t) < 0) return false;
+                    } else {
+                        let any = false;
+                        for (const t of filterState.tags) if (tg.indexOf(t) >= 0) { any = true; break; }
+                        if (!any) return false;
+                    }
+                }
+                return true;
+            }
+            function filterActive() { return filterState.tokens.length > 0 || filterState.tags.size > 0 || filterState.onlyAir; }
+            function applyFilterTo(box) {
+                const hide = !boxMatches(box);
+                if (hide === box.classList.contains('is-filtered')) return false;
+                box.classList.toggle('is-filtered', hide);
+                return true;
+            }
+
+            const searchSummary = document.getElementById('search-summary');
+            const filtersBadge = document.getElementById('filters-badge');
+            function refilterAll() {
+                const boxes = allBoxes();
+                let shown = 0;
+                boxes.forEach(function (b) { applyFilterTo(b); if (!b.classList.contains('is-filtered')) shown++; });
+                syncSections();
+                if (searchSummary) {
+                    searchSummary.textContent = boxes.length === 0 ? '' : (filterActive()
+                        ? shown + ' of ' + boxes.length + ' channels' + (shown === 0 ? ' — nothing matches' : '')
+                        : boxes.length + ' channels');
+                }
+                if (filtersBadge) {
+                    const n = filterState.tokens.length + filterState.tags.size + (filterState.onlyAir ? 1 : 0);
+                    filtersBadge.textContent = String(n);
+                    filtersBadge.style.display = n ? '' : 'none';
+                }
+                renderTagCloud();
+            }
+
+            // A card update brought new text/tags/rank for one card.
+            let metaTimer = 0;
+            function noteMeta(elt, data) {
+                const box = elt.closest('.ts-box');
+                if (!box) return;
+                const q = Q_RE.exec(data), t = TAGS_RE.exec(data);
+                if (!readBoxMeta(box, q ? q[1] : undefined, t ? t[1] : undefined)) return;
+                if (applyFilterTo(box) || filterActive()) scheduleMetaRefresh();
+                else scheduleTagCloud();
+            }
+            function scheduleMetaRefresh() {
+                if (metaTimer) return;
+                metaTimer = setTimeout(function () { metaTimer = 0; refilterAll(); }, 200);
+            }
+            let cloudTimer = 0;
+            function scheduleTagCloud() {
+                if (cloudTimer) return;
+                cloudTimer = setTimeout(function () { cloudTimer = 0; renderTagCloud(); }, 600);
+            }
+
+            // The tag cloud: every tag seen on any channel with how many channels have it.
+            const tagListEl = document.getElementById('tag-list');
+            const tagEmptyEl = document.getElementById('tag-empty');
+            const TAG_SHOWN_MAX = 80;
+            function escHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+            function renderTagCloud() {
+                if (!tagListEl) return;
+                const counts = new Map();
+                allBoxes().forEach(function (b) { (b._tags || []).forEach(function (t) { counts.set(t, (counts.get(t) || 0) + 1); }); });
+                filterState.tags.forEach(function (t) { if (!counts.has(t)) counts.set(t, 0); }); // a selected tag stays so that it can be unselected
+                const q = normText(filterState.tagQuery.trim());
+                const entries = Array.from(counts.entries()).filter(function (e) { return filterState.tags.has(e[0]) || !q || e[0].indexOf(q) >= 0; });
+                entries.sort(function (a, b) {
+                    const sa = filterState.tags.has(a[0]) ? 0 : 1, sb = filterState.tags.has(b[0]) ? 0 : 1;
+                    return sa - sb || b[1] - a[1] || (a[0] < b[0] ? -1 : 1);
+                });
+                const shown = entries.slice(0, TAG_SHOWN_MAX);
+                let html = '';
+                shown.forEach(function (e) {
+                    html += '<button type="button" class="tag-chip' + (filterState.tags.has(e[0]) ? ' is-on' : '') + '" data-tag="' + escHtml(e[0]) + '">' +
+                            escHtml(e[0]) + ' <span class="tag-n">' + e[1] + '</span></button>';
+                });
+                if (entries.length > shown.length) html += '<div class="ts-text is-description is-small">+' + (entries.length - shown.length) + ' more: type in the box above to narrow them down</div>';
+                if (tagListEl._html !== html) { tagListEl._html = html; tagListEl.innerHTML = html; }
+                if (tagEmptyEl) tagEmptyEl.style.display = counts.size === 0 ? '' : 'none';
+                // the tags on the cards show which ones are selected
+                if (channelsList) channelsList.querySelectorAll('.card-tag').forEach(function (c) { c.classList.toggle('is-on', filterState.tags.has(c.dataset.tag)); });
+            }
+            function toggleTag(tag) {
+                if (filterState.tags.has(tag)) filterState.tags.delete(tag); else filterState.tags.add(tag);
+                refilterAll();
+            }
+            if (tagListEl) tagListEl.addEventListener('click', function (e) {
+                const b = e.target.closest('.tag-chip');
+                if (b) toggleTag(b.dataset.tag);
+            });
+            if (channelsList) channelsList.addEventListener('click', function (e) {
+                const b = e.target.closest('.card-tag');
+                if (b) toggleTag(b.dataset.tag);
+            });
+
+            let searchTimer = 0;
+            if (searchInput) searchInput.addEventListener('input', function () {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(function () {
+                    filterState.tokens = normText(searchInput.value).split(/\s+/).filter(Boolean);
+                    refilterAll();
+                }, 120);
+            });
+            if (tagSearchInput) tagSearchInput.addEventListener('input', function () { filterState.tagQuery = tagSearchInput.value; renderTagCloud(); });
+            const onlyAirBox = document.getElementById('only-air');
+            if (onlyAirBox) onlyAirBox.addEventListener('change', function () { filterState.onlyAir = onlyAirBox.checked; refilterAll(); });
+            document.querySelectorAll('#tag-mode button').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    filterState.tagMode = btn.dataset.mode;
+                    document.querySelectorAll('#tag-mode button').forEach(function (b) {
+                        const on = b === btn;
+                        b.classList.toggle('is-active', on);
+                        b.classList.toggle('is-outlined', !on);
+                    });
+                    if (filterState.tags.size > 1) refilterAll();
+                });
+            });
+            const clearBtn = document.getElementById('filters-clear');
+            if (clearBtn) clearBtn.addEventListener('click', function () {
+                filterState.tokens = []; filterState.tags.clear(); filterState.onlyAir = false; filterState.tagQuery = '';
+                if (searchInput) searchInput.value = '';
+                if (tagSearchInput) tagSearchInput.value = '';
+                if (onlyAirBox) onlyAirBox.checked = false;
+                refilterAll();
+            });
+            // On narrow screens the panel is a drawer opened from the top bar.
+            const sidePanel = document.getElementById('side-panel');
+            const filtersBtn = document.getElementById('filters-btn');
+            // Narrow window: the panel hangs from the top bar; wide window: it sits on the right of the list.
+            const narrowMq = window.matchMedia ? window.matchMedia('(max-width: 1360px)') : null;
+            function placePanel() {
+                const bar = document.getElementById('top-bar'), page = document.getElementById('page');
+                if (!sidePanel || !bar || !page) return;
+                const target = narrowMq && narrowMq.matches ? bar : page;
+                if (sidePanel.parentNode !== target) target.appendChild(sidePanel);
+                if (!(narrowMq && narrowMq.matches)) sidePanel.classList.remove('is-open');
+            }
+            placePanel();
+            if (narrowMq && narrowMq.addEventListener) narrowMq.addEventListener('change', placePanel);
+            if (filtersBtn && sidePanel) {
+                filtersBtn.addEventListener('click', function (e) { e.stopPropagation(); sidePanel.classList.toggle('is-open'); });
+                document.addEventListener('click', function (e) {
+                    if (sidePanel.classList.contains('is-open') && !sidePanel.contains(e.target) && !filtersBtn.contains(e.target)) sidePanel.classList.remove('is-open');
+                });
+            }
+            refilterAll();
         </script>
     </body>
 </html>

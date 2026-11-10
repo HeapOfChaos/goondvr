@@ -4,33 +4,8 @@ package manager
 
 import (
 	"fmt"
-	"path/filepath"
-	"strings"
 	"syscall"
 )
-
-// DiskStats holds usage information for a filesystem.
-type DiskStats struct {
-	Path    string
-	Total   uint64
-	Used    uint64
-	Free    uint64
-	Percent float64
-}
-
-// recordingDir extracts the base directory from a filename pattern like
-// "videos/{{.Username}}_{{.Year}}-..." → "videos".
-func recordingDir(pattern string) string {
-	idx := strings.Index(pattern, "{{")
-	if idx == -1 {
-		return "."
-	}
-	dir := filepath.Dir(pattern[:idx])
-	if dir == "" || dir == "." {
-		return "."
-	}
-	return dir
-}
 
 func getDiskStats(path string) (DiskStats, error) {
 	var stat syscall.Statfs_t

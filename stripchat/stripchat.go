@@ -97,6 +97,44 @@ func (s *Stripchat) FetchStream(ctx context.Context, req *internal.Req, username
 	return nil, err
 }
 
+// FetchLiveThumbURL implements site.LiveThumbSource. It asks only the light
+// cam API (never the browser fallback of FetchStream) for the address of the
+// newest preview snapshot.
+func (s *Stripchat) FetchLiveThumbURL(ctx context.Context, req *internal.Req, username string) (string, error) {
+	info, err := fetchStreamViaLegacyAPI(ctx, req, username)
+	if info != nil && info.LiveThumbURL != "" &&
+		(err == nil || errors.Is(err, internal.ErrChannelOffline) || errors.Is(err, internal.ErrPrivateStream)) {
+		return info.LiveThumbURL, nil
+	}
+	if err == nil {
+		err = fmt.Errorf("stripchat: no live preview address")
+	}
+	return "", err
+}
+
+// FetchAvailability implements site.AvailabilitySource using only the light
+// cam API (never the browser fallback).
+func (s *Stripchat) FetchAvailability(ctx context.Context, req *internal.Req, username string) (site.Availability, error) {
+	info, err := fetchStreamViaLegacyAPI(ctx, req, username)
+	return availabilityFrom(info, err)
+}
+
+// availabilityFrom turns the answer of the cam API into an Availability:
+// offline and private rooms are "not available", anything else that failed is
+// "could not tell".
+func availabilityFrom(info *site.StreamInfo, err error) (site.Availability, error) {
+	switch {
+	case err == nil && info != nil:
+		return site.Availability{Live: true, NumViewers: info.NumViewers, LiveThumbURL: info.LiveThumbURL}, nil
+	case errors.Is(err, internal.ErrChannelOffline), errors.Is(err, internal.ErrPrivateStream):
+		return site.Availability{}, nil
+	}
+	if err == nil {
+		err = fmt.Errorf("stripchat: empty availability answer")
+	}
+	return site.Availability{}, err
+}
+
 func fetchStreamViaLegacyAPI(ctx context.Context, req *internal.Req, username string) (*site.StreamInfo, error) {
 	apiURL := fmt.Sprintf("https://stripchat.com/api/front/v2/models/username/%s/cam", username)
 

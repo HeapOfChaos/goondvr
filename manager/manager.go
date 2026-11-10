@@ -2,29 +2,41 @@ package manager
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"text/template"
 	"time"
 
 	"github.com/HeapOfChaos/goondvr/channel"
 	"github.com/HeapOfChaos/goondvr/entity"
 	"github.com/HeapOfChaos/goondvr/notifier"
+	"github.com/HeapOfChaos/goondvr/persist"
 	"github.com/HeapOfChaos/goondvr/router/view"
 	"github.com/HeapOfChaos/goondvr/server"
-	"github.com/r3labs/sse/v2"
 )
 
 // Manager is responsible for managing channels and their states.
 type Manager struct {
 	Channels sync.Map
-	SSE      *sse.Server
+	hub      *hub // Server-Sent Events to the web UI (see hub.go)
+
+	presence presenceEngine // keeps the "on air" mark of the channels up to date (presence.go)
+
+	cfgMu         sync.Mutex         // one change to the channel list or to the filename patterns at a time (pattern conflicts)
+	autoMu        sync.Mutex         // autoStep runs from the presence loop and from the detection workers
+	autoLastStart time.Time          // last automatic start (auto.go), guarded by autoMu
+	detectStop    context.CancelFunc // stops the image detection engine (detect.go)
+
+	closing atomic.Bool // Shutdown has saved the channel list: later saves must not overwrite it (Stop marks every channel paused)
 
 	startTime  time.Time
 	cfBlocksMu sync.Mutex
@@ -43,30 +55,27 @@ type filenamePatternData struct {
 	Sequence int
 }
 
-// New initializes a new Manager instance with an SSE server.
+// New initializes a new Manager instance with an SSE hub for the web UI.
 func New() (*Manager, error) {
-
-	server := sse.New()
-	server.SplitData = true
-
-	updateStream := server.CreateStream("updates")
-	updateStream.AutoReplay = false
-
-	m := &Manager{SSE: server}
+	m := &Manager{hub: newHub()}
 	m.startTime = time.Now()
 	m.cfBlocks = make(map[string]time.Time)
+	m.presence.kick = make(chan struct{}, 1)
 	go m.diskMonitor()
+	go m.presenceLoop()
+	var detectCtx context.Context
+	detectCtx, m.detectStop = context.WithCancel(context.Background())
+	go m.detectLoop(detectCtx)
 
-	// Send a heartbeat event every 30s so browsers can detect a stale connection
-	// and the SSE extension will reconnect automatically.
+	// Keep-alive for the SSE connections. It is an SSE *comment*: browsers ignore
+	// it, but dead connections are noticed and proxies keep the stream open. (It
+	// used to be an event without data, which made the SSE library end every
+	// browser's response every 30 s.)
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(heartbeatInterval)
 		defer ticker.Stop()
 		for range ticker.C {
-			server.Publish("updates", &sse.Event{
-				Event: []byte("heartbeat"),
-				Data:  []byte(""),
-			})
+			m.hub.comment(hubKeepAliveText)
 		}
 	}()
 
@@ -108,6 +117,25 @@ type settings struct {
 	NotifyCooldownHours int    `json:"notify_cooldown_hours,omitempty"`
 	NotifyStreamOnline  bool   `json:"notify_stream_online,omitempty"`
 	StripchatPDKey      string `json:"stripchat_pdkey,omitempty"`
+
+	// Detection of the channels on the air (see presence.go).
+	PresenceCampaign string `json:"presence_campaign,omitempty"`
+	PresenceListURL  string `json:"presence_list_url,omitempty"`
+	PresenceInterval int    `json:"presence_interval,omitempty"`
+	// Global threshold of the "record automatically" option of the channels.
+	AutoMinFreeGB int `json:"auto_min_free_gb,omitempty"`
+	// Image detection: where the detector runs (the per-channel options are in channels.json).
+	DetectBackend  string `json:"detect_backend,omitempty"`
+	DetectLocalURL string `json:"detect_local_url,omitempty"`
+	DetectColabURL string `json:"detect_colab_url,omitempty"`
+	DetectToken    string `json:"detect_token,omitempty"`
+	// Defaults for the channels that are added from now on (nil = not saved: the
+	// command-line / built-in value is used). A channel can change them afterwards.
+	DefaultFramerate   *int    `json:"default_framerate,omitempty"`
+	DefaultResolution  *int    `json:"default_resolution,omitempty"`
+	DefaultPattern     *string `json:"default_pattern,omitempty"`
+	DefaultMaxDuration *int    `json:"default_max_duration,omitempty"`
+	DefaultMaxFilesize *int    `json:"default_max_filesize,omitempty"`
 }
 
 func ensureConfDir() error {
@@ -115,6 +143,13 @@ func ensureConfDir() error {
 		return fmt.Errorf("mkdir conf: %w", err)
 	}
 	return nil
+}
+
+// writeConf saves a file of conf/ so that a kill never leaves it half written
+// (see persist.WriteFile) and keeps a rolling backup of the version it replaces.
+func writeConf(path string, b []byte) error {
+	persist.Backup(path, false)
+	return persist.WriteFile(path, b, 0600)
 }
 
 func ensureJSONFile(path string, defaultValue any) error {
@@ -133,7 +168,7 @@ func ensureJSONFile(path string, defaultValue any) error {
 	}
 	b = append(b, '\n')
 
-	if err := os.WriteFile(path, b, 0600); err != nil {
+	if err := persist.WriteFile(path, b, 0600); err != nil {
 		return fmt.Errorf("write default %s: %w", path, err)
 	}
 	return nil
@@ -179,7 +214,19 @@ func SaveSettings() error {
 		NotifyCooldownHours: server.Config.NotifyCooldownHours,
 		NotifyStreamOnline:  server.Config.NotifyStreamOnline,
 		StripchatPDKey:      server.Config.StripchatPDKey,
+		PresenceCampaign:    server.Config.PresenceCampaign,
+		PresenceListURL:     server.Config.PresenceListURL,
+		PresenceInterval:    server.Config.PresenceInterval,
+		AutoMinFreeGB:       server.Config.AutoMinFreeGB,
+		DetectBackend:       server.Config.DetectBackend,
+		DetectLocalURL:      server.Config.DetectLocalURL,
+		DetectColabURL:      server.Config.DetectColabURL,
+		DetectToken:         server.Config.DetectToken,
 	}
+	// The defaults of new channels are saved once the person has chosen them in
+	// Settings (that is the only place that calls SaveSettings).
+	fr, res, pat, md, mf := server.Config.Framerate, server.Config.Resolution, server.Config.Pattern, server.Config.MaxDuration, server.Config.MaxFilesize
+	s.DefaultFramerate, s.DefaultResolution, s.DefaultPattern, s.DefaultMaxDuration, s.DefaultMaxFilesize = &fr, &res, &pat, &md, &mf
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal settings: %w", err)
@@ -187,7 +234,7 @@ func SaveSettings() error {
 	if err := ensureConfDir(); err != nil {
 		return err
 	}
-	if err := os.WriteFile(settingsFile, b, 0600); err != nil {
+	if err := writeConf(settingsFile, b); err != nil {
 		return fmt.Errorf("write settings: %w", err)
 	}
 	return nil
@@ -199,14 +246,15 @@ func LoadSettings() error {
 	if err := EnsureConfigPlaceholders(); err != nil {
 		return fmt.Errorf("ensure config placeholders: %w", err)
 	}
-	b, err := os.ReadFile(settingsFile)
+	var s settings
+	note, err := persist.ReadJSON(settingsFile, &s)
 	if err != nil {
 		return fmt.Errorf("read settings: %w", err)
 	}
-	var s settings
-	if err := json.Unmarshal(b, &s); err != nil {
-		return fmt.Errorf("unmarshal settings: %w", err)
+	if note != "" {
+		log.Printf("WARN  %s", note)
 	}
+	persist.Backup(settingsFile, true) // a snapshot at every start
 	if s.Cookies != "" {
 		server.Config.Cookies = s.Cookies
 	}
@@ -270,6 +318,32 @@ func LoadSettings() error {
 	if s.StripchatPDKey != "" {
 		server.Config.StripchatPDKey = s.StripchatPDKey
 	}
+	server.Config.PresenceCampaign = strings.TrimSpace(s.PresenceCampaign)
+	server.Config.PresenceListURL = strings.TrimSpace(s.PresenceListURL)
+	server.Config.PresenceInterval = s.PresenceInterval
+	server.Config.DetectBackend = entity.NormalizeDetectBackend(s.DetectBackend)
+	server.Config.DetectLocalURL = s.DetectLocalURL
+	server.Config.DetectColabURL = s.DetectColabURL
+	server.Config.DetectToken = s.DetectToken
+	server.Config.AutoMinFreeGB = s.AutoMinFreeGB
+	if server.Config.AutoMinFreeGB <= 0 {
+		server.Config.AutoMinFreeGB = DefaultAutoMinFreeGB
+	}
+	if s.DefaultFramerate != nil && (*s.DefaultFramerate == 30 || *s.DefaultFramerate == 60) {
+		server.Config.Framerate = *s.DefaultFramerate
+	}
+	if s.DefaultResolution != nil && *s.DefaultResolution > 0 {
+		server.Config.Resolution = *s.DefaultResolution
+	}
+	if s.DefaultPattern != nil && strings.TrimSpace(*s.DefaultPattern) != "" {
+		server.Config.Pattern = *s.DefaultPattern
+	}
+	if s.DefaultMaxDuration != nil && *s.DefaultMaxDuration >= 0 {
+		server.Config.MaxDuration = *s.DefaultMaxDuration
+	}
+	if s.DefaultMaxFilesize != nil && *s.DefaultMaxFilesize >= 0 {
+		server.Config.MaxFilesize = *s.DefaultMaxFilesize
+	}
 	if server.Config.FFmpegEncoder == "" {
 		server.Config.FFmpegEncoder = "libx264"
 	}
@@ -296,6 +370,15 @@ func LoadSettings() error {
 		server.Config.BrowserBootstrapURL = server.Config.Domain
 	}
 	return nil
+}
+
+// DefaultAutoMinFreeGB is the free disk space below which "record automatically" waits.
+const DefaultAutoMinFreeGB = 10
+
+// ValidatePattern reports whether a filename pattern can be used.
+func ValidatePattern(pattern string) error {
+	_, err := renderPatternSample(&entity.ChannelConfig{Username: "user", Site: "chaturbate", Pattern: pattern})
+	return err
 }
 
 func renderPatternSample(conf *entity.ChannelConfig) (string, error) {
@@ -409,6 +492,9 @@ func migrateLegacyPatternConflicts(config []*entity.ChannelConfig) (bool, error)
 
 // SaveConfig saves the current channels and state to a JSON file.
 func (m *Manager) SaveConfig() error {
+	if m.closing.Load() {
+		return nil // Shutdown already saved the list as the person left it
+	}
 	if server.Config != nil && server.Config.Username != "" {
 		// Single-channel CLI runs are ephemeral and should not rewrite the
 		// persisted web UI channel list.
@@ -418,7 +504,8 @@ func (m *Manager) SaveConfig() error {
 	var config []*entity.ChannelConfig
 
 	m.Channels.Range(func(key, value any) bool {
-		config = append(config, value.(*channel.Channel).Config)
+		snap := value.(*channel.Channel).ConfigSnapshot() // a copy: recording goroutines keep updating the live one
+		config = append(config, &snap)
 		return true
 	})
 
@@ -429,7 +516,7 @@ func (m *Manager) SaveConfig() error {
 	if err := ensureConfDir(); err != nil {
 		return err
 	}
-	if err := os.WriteFile(channelsFile, b, 0600); err != nil {
+	if err := writeConf(channelsFile, b); err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}
 	return nil
@@ -443,7 +530,7 @@ func saveChannelConfig(config []*entity.ChannelConfig) error {
 	if err := ensureConfDir(); err != nil {
 		return err
 	}
-	if err := os.WriteFile(channelsFile, b, 0600); err != nil {
+	if err := writeConf(channelsFile, b); err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}
 	return nil
@@ -454,15 +541,15 @@ func (m *Manager) LoadConfig() error {
 	if err := EnsureConfigPlaceholders(); err != nil {
 		return fmt.Errorf("ensure config placeholders: %w", err)
 	}
-	b, err := os.ReadFile(channelsFile)
+	var config []*entity.ChannelConfig
+	note, err := persist.ReadJSON(channelsFile, &config)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
 	}
-
-	var config []*entity.ChannelConfig
-	if err := json.Unmarshal(b, &config); err != nil {
-		return fmt.Errorf("unmarshal: %w", err)
+	if note != "" {
+		log.Printf("WARN  %s", note)
 	}
+	persist.Backup(channelsFile, true) // a snapshot at every start
 
 	migrated, err := migrateLegacyPatternConflicts(config)
 	if err != nil {
@@ -501,6 +588,7 @@ func (m *Manager) LoadConfig() error {
 		}
 		go ch.Resume(i)
 	}
+	m.kickPresence() // find out right away which of them are on the air
 	return nil
 }
 
@@ -519,19 +607,22 @@ func (m *Manager) CreateChannel(conf *entity.ChannelConfig, shouldSave bool) err
 		return fmt.Errorf("channel %s (%s) already exists", conf.Username, conf.Site)
 	}
 
-	var existing []*entity.ChannelConfig
-	m.Channels.Range(func(_, value any) bool {
-		existing = append(existing, value.(*channel.Channel).Config)
-		return true
-	})
-	if err := detectPatternConflict(conf, existing); err != nil {
+	m.cfgMu.Lock()
+	if err := detectPatternConflict(conf, m.channelConfigs()); err != nil {
+		m.cfgMu.Unlock()
 		return err
+	}
+	if _, ok := m.Channels.Load(channelID); ok { // another request added it while the patterns were checked
+		m.cfgMu.Unlock()
+		return fmt.Errorf("channel %s (%s) already exists", conf.Username, conf.Site)
 	}
 
 	ch := channel.New(conf)
 	m.Channels.Store(channelID, ch)
+	m.cfgMu.Unlock()
 
 	go ch.Resume(0)
+	m.kickPresence()
 
 	if shouldSave {
 		if err := m.SaveConfig(); err != nil {
@@ -562,7 +653,9 @@ func (m *Manager) PauseChannel(channelID string) error {
 	if !ok {
 		return nil
 	}
-	thing.(*channel.Channel).Pause()
+	ch := thing.(*channel.Channel)
+	ch.UserPaused()
+	ch.Pause()
 
 	if err := m.SaveConfig(); err != nil {
 		return fmt.Errorf("save config: %w", err)
@@ -576,7 +669,9 @@ func (m *Manager) ResumeChannel(channelID string) error {
 	if !ok {
 		return nil
 	}
-	thing.(*channel.Channel).Resume(0)
+	ch := thing.(*channel.Channel)
+	ch.UserResumed()
+	ch.Resume(0)
 
 	if err := m.SaveConfig(); err != nil {
 		return fmt.Errorf("save config: %w", err)
@@ -595,53 +690,82 @@ func (m *Manager) ChannelInfo() []*entity.ChannelInfo {
 	})
 
 	sort.Slice(channels, func(i, j int) bool {
-		// First priority: Online channels
-		if channels[i].IsOnline != channels[j].IsOnline {
-			return channels[i].IsOnline
+		// First priority: the section (recording, on air, retrying, paused).
+		if channels[i].Rank != channels[j].Rank {
+			return channels[i].Rank < channels[j].Rank
 		}
-		// Second priority: Alphabetical order by username, then site.
-		if strings.ToLower(channels[i].Username) != strings.ToLower(channels[j].Username) {
-			return strings.ToLower(channels[i].Username) < strings.ToLower(channels[j].Username)
-		}
-		return strings.ToLower(channels[i].Site) < strings.ToLower(channels[j].Site)
+		// Second priority: Alphabetical order by username, then site (SortKey is
+		// "username site" in lower case; ' ' sorts before every character a username
+		// can contain, so a shorter username always comes first).
+		return channels[i].SortKey < channels[j].SortKey
 	})
+	for i, c := range channels {
+		c.SectionStart = i == 0 || channels[i-1].Rank != c.Rank
+	}
 
 	return channels
 }
 
-// Publish sends an SSE event to the specified channel.
-func (m *Manager) Publish(evt entity.Event, info *entity.ChannelInfo) {
+// Publish sends an SSE event for the given channel to every connected browser.
+//
+// It never blocks: each browser has its own queue and one that cannot keep up
+// is disconnected (it reconnects and gets the current state), see hub.go.
+// Blocking here used to freeze the recording loop of every channel as soon as
+// one browser tab got stuck. The result is always true (there is nothing to
+// retry); it is kept for the server.IManager interface.
+func (m *Manager) Publish(evt entity.Event, info *entity.ChannelInfo) bool {
+	msg, err := renderEvent(evt, info)
+	if err != nil {
+		fmt.Println("Error executing template:", err)
+		return true // retrying would fail the same way
+	}
+	m.hub.publish(msg)
+	return true
+}
+
+// renderEvent builds the SSE message of one kind of update for one channel.
+func renderEvent(evt entity.Event, info *entity.ChannelInfo) (hubMessage, error) {
 	switch evt {
 	case entity.EventUpdate:
 		var b bytes.Buffer
 		for _, mode := range []string{"expanded", "grid", "collapsed"} {
 			if err := view.InfoTpl.ExecuteTemplate(&b, "channel_details", withViewMode(info, mode)); err != nil {
-				fmt.Println("Error executing template:", err)
-				return
+				return hubMessage{}, err
 			}
 		}
-		m.SSE.Publish("updates", &sse.Event{
-			Event: []byte(info.ChannelID + "-info"),
-			Data:  b.Bytes(),
-		})
+		return hubMessage{event: info.ChannelID + "-info", data: b.Bytes()}, nil
 	case entity.EventThumb:
 		var b bytes.Buffer
 		for _, mode := range []string{"expanded", "grid", "collapsed"} {
 			if err := view.InfoTpl.ExecuteTemplate(&b, "channel_thumb", withViewMode(info, mode)); err != nil {
-				fmt.Println("Error executing template:", err)
-				return
+				return hubMessage{}, err
 			}
 		}
-		m.SSE.Publish("updates", &sse.Event{
-			Event: []byte(info.ChannelID + "-thumb"),
-			Data:  b.Bytes(),
-		})
+		return hubMessage{event: info.ChannelID + "-thumb", data: b.Bytes()}, nil
 	case entity.EventLog:
-		m.SSE.Publish("updates", &sse.Event{
-			Event: []byte(info.ChannelID + "-log"),
-			Data:  []byte(strings.Join(info.Logs, "\n")),
-		})
+		return hubMessage{event: info.ChannelID + "-log", data: []byte(strings.Join(info.Logs, "\n"))}, nil
 	}
+	return hubMessage{}, fmt.Errorf("unknown event %q", evt)
+}
+
+// snapshot renders the current card, thumbnail and log of every channel. A
+// browser that reconnects receives it first, so whatever it missed while it was
+// disconnected (or too slow) is replaced by the current state.
+func (m *Manager) snapshot() []hubMessage {
+	var msgs []hubMessage
+	m.Channels.Range(func(_, value any) bool {
+		info := value.(*channel.Channel).ExportInfo()
+		for _, evt := range []entity.Event{entity.EventUpdate, entity.EventThumb, entity.EventLog} {
+			msg, err := renderEvent(evt, info)
+			if err != nil {
+				fmt.Println("Error executing template:", err)
+				break
+			}
+			msgs = append(msgs, msg)
+		}
+		return true
+	})
+	return msgs
 }
 
 func withViewMode(info *entity.ChannelInfo, mode string) *entity.ChannelInfo {
@@ -650,9 +774,14 @@ func withViewMode(info *entity.ChannelInfo, mode string) *entity.ChannelInfo {
 	return &cp
 }
 
-// Subscriber handles SSE subscriptions for the specified channel.
+// HasViewers reports whether any browser is connected to the web UI.
+func (m *Manager) HasViewers() bool {
+	return m.hub.count() > 0
+}
+
+// Subscriber serves one browser's SSE connection until it goes away.
 func (m *Manager) Subscriber(w http.ResponseWriter, r *http.Request) {
-	m.SSE.ServeHTTP(w, r)
+	m.hub.serve(w, r, m.snapshot)
 }
 
 // GetChannelThumb returns the current summary card image URL for the given username.
@@ -662,32 +791,57 @@ func (m *Manager) GetChannelThumb(channelID string) string {
 	if !ok {
 		return ""
 	}
-	return val.(*channel.Channel).SummaryCardImage
+	return val.(*channel.Channel).GetSummaryCardImage()
 }
 
 // GetChannelLiveThumb returns the live-updating thumbnail URL for the given username.
 // For Stripchat this is the doppiocdn snapshot URL; for Chaturbate it returns empty
 // (the JS handles Chaturbate live thumbs via mmcdn directly).
-func (m *Manager) GetChannelLiveThumb(channelID string) string {
+func (m *Manager) GetChannelLiveThumb(ctx context.Context, channelID string) string {
 	val, ok := m.Channels.Load(channelID)
 	if !ok {
 		return ""
 	}
-	return val.(*channel.Channel).LiveThumbURL
+	return val.(*channel.Channel).FreshLiveThumbURL(ctx)
 }
 
-// Shutdown gracefully stops all active channels, saves config, and waits for
-// any recording finalization tasks to finish before returning.
+// shutdownBudget is how long Shutdown waits for the channels to close their
+// files. Windows ends the process about five seconds after the console window is
+// closed (or the session ends), so everything has to fit in less than that.
+// (A variable only so that tests can shorten it.)
+var shutdownBudget = 4 * time.Second
+
+// Shutdown closes the program in an orderly way within shutdownBudget: the
+// channel list is saved first (it is tiny and cannot be left half written), then
+// every channel stops at once, in parallel, and closes its recording. The slow
+// work that follows a recording (seek index, ffmpeg) is not started: the files
+// stay on the journal of open recordings and are finished at the next start.
 func (m *Manager) Shutdown() {
-	m.Channels.Range(func(key, value any) bool {
-		ch := value.(*channel.Channel)
-		wasPaused := ch.Config.IsPaused
-		ch.Stop()
-		ch.Config.IsPaused = wasPaused
+	channel.BeginShutdown()
+	if m.detectStop != nil {
+		m.detectStop()
+	}
+	_ = m.SaveConfig()
+	m.closing.Store(true)
+	persist.Backup(channelsFile, true)
+	persist.Backup(settingsFile, true)
+
+	var wg sync.WaitGroup
+	m.Channels.Range(func(_, v any) bool {
+		wg.Add(1)
+		go func(ch *channel.Channel) {
+			defer wg.Done()
+			ch.Stop()
+		}(v.(*channel.Channel))
 		return true
 	})
-	// Persist channel list so the web UI restores them on next start.
-	_ = m.SaveConfig()
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(shutdownBudget):
+		log.Printf("WARN  some channels did not close within %s; exiting anyway (their recordings are repaired at the next start)", shutdownBudget)
+	}
 }
 
 // ReportCFBlock records a CF block for username and fires a global alert if
@@ -731,7 +885,7 @@ func (m *Manager) GetStats() server.StatsResponse {
 
 	count := 0
 	m.Channels.Range(func(_, v any) bool {
-		if v.(*channel.Channel).IsOnline {
+		if v.(*channel.Channel).Online() {
 			count++
 		}
 		return true
@@ -744,6 +898,7 @@ func (m *Manager) GetStats() server.StatsResponse {
 		DiskPercent:    disk.Percent,
 		UptimeSeconds:  int64(time.Since(m.startTime).Seconds()),
 		RecordingCount: count,
+		Presence:       m.PresenceStatus(),
 	}
 }
 
